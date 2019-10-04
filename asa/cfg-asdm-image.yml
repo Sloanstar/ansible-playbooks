@@ -88,13 +88,13 @@
 
   - name: Set asaAsdmExists to true
     set_fact:
-      asaAsdmExists: "true"
+      asaAsdmExists: true
     when: asaAsdmImage in _asaAsdmDir.stdout[0]
     tags: asdmFact
 
   - name: Set asaAsdmExists to false
     set_fact:
-      asaAsdmExists: "false"
+      asaAsdmExists: false
     when: asaAsdmImage not in _asaAsdmDir.stdout[0]
     tags: asdmFact
 ###################################################
@@ -131,13 +131,13 @@
     
       - name: Set asaAsdmExists to true
         set_fact:
-          asaAsdmExists: "true"
+          asaAsdmExists: true
         when: asaAsdmImage in _asaAsdmDirCopy.stdout[0]
         tags: asdmFact
     
       - name: Set asaAsdmExists to false
         set_fact:
-          asaAsdmExists: "false"
+          asaAsdmExists: false
         when: asaAsdmImage not in _asaAsdmDirCopy.stdout[0]
         tags: asdmFact
     when: 
