@@ -184,57 +184,44 @@
           # TODO - Re-verify
         ignore_errors: yes
     
-      - name: Debug Failed verify
-        debug:
-          var: _asdmVerify
-          verbosity: 2
-        when: >
-          (playbook_debug_level > 3) or
-          (_asdmVerify is failed)
-        tags: asdmVerify
-
-      - name: Get Embedded Line
+      - name: Get Embedded Checksum
         set_fact:
-          lineEmbedded: "{{ lineEmbedded|default([]) + [item] }}"
-        when: "embedded" in item|lower
+          asdmEmbedded: "{{ item.split(':')[1]|trim }}"
+        when: "item|trim|lower is search('embedded')"
         with_items:
-          - _asdmVerify.stdout_lines[0]
+          - "{{ _asdmVerify.stdout_lines[0] }}"
         tags: asdmVerify
 
-      - name: Debug lineEmbedded
-        debug:
-          var: lineEmbedded
-          verbosity: 3
-        tags: asdmVerify
-    
-      - name: Gather Checksums
+      - name: Get Computed Checksum
         set_fact:
-          asdmEmbedded: "{{ _asdmVerify.stdout_lines[0][2].split(':')[1]|trim }}"
-          asdmCalculated: "{{ _asdmVerify.stdout_lines[0][3].split(':')[1]|trim }}"
-        register: _setChecksum
+          asdmComputed: "{{ item.split(':')[1]|trim }}"
+        when: "item|trim|lower is search('computed')"
+        with_items:
+          - "{{ _asdmVerify.stdout_lines[0] }}"
         failed_when: >
           (asdmEmbedded == "") or
-          (asdmCalculated == "") or
-          (asdmEmbedded != asdmCalculated)
-        ignore_errors: yes
+          (asdmComputed == "") or
+          (asdmEmbedded != asdmComputed)
         tags: asdmVerify
 
-      - name: Debug failed Gather Checksums
+      - name: Debug _asdmVerify.stdout_lines[0]
         debug:
-          var: _asdmVerify.stdout_lines
-        when: _setChecksum is failed
+          msg: "line: {{ item }}"
+          verbosity: 3
+        with_items:
+          - "{{ _asdmVerify.stdout_lines[0] }}"
         tags: asdmVerify
-    
+   
       - name: Log Passed Checksum
         debug:
-          msg: "\nFile checksum OK!\n{{ asdmCalculated }}\n"
-        when: _setChecksum is success
+          msg: "\nFile checksum OK!\n{{ asdmComputed }}\n"
+        when: asdmEmbedded == asdmComputed
         tags: asdmVerify
     
       - name: Log Failed Checksum
         debug:
-          msg: "\nasdmEmbedded: {{ asdmEmbedded }}\nasdmCalculated: {{ asdmCalculated }}\n"
-        when: _setChecksum is failed
+          msg: "\nasdmEmbedded: {{ asdmEmbedded }}\nasdmComputed: {{ asdmComputed }}\n"
+        when: asdmEmbedded != asdmComputed
         tags: asdmVerify
 ####  ######### END IMAGE VERIFY ###############
       
@@ -244,8 +231,8 @@
           lines:
             - asdm image disk0:/{{ asaAsdmImage }}
         register: _asdmConfig
-        when: _setChecksum is success
-        failed_when: _setChecksum is failed
+        when: asdmEmbedded == asdmComputed
+        failed_when: _asdmConfig is failed
         tags: asdmConfig
     
       - name: Debug Failed verify
@@ -255,6 +242,16 @@
           (playbook_debug_level > 3) or
           (_asdmConfig is failed)
         tags: asdmConfig
+
+      - name: Save [SYSTEM] Context Configuration
+        asa_command:
+          commands:
+            - copy /noconfirm running-config startup-config
+        vars:
+          ansible_command_timeout: 180
+        when: asaMulticontext == "true"
+        tags: asdmConfig
+
 ###################################################
 
 ############### END BLOCK CONDITIONAL #############
@@ -287,3 +284,10 @@
       (playbook_debug_level > 0) or
       (_sshTimeoutAdd is failed)
     tags: sshTimeout
+
+  - name: Save Configuration
+    asa_command:
+      commands:
+        - copy /noconfirm running-config startup-config
+    vars:
+      ansible_command_timeout: 180

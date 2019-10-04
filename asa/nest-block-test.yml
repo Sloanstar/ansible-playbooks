@@ -1,0 +1,29 @@
+---
+- name: Nested Block Testing
+  hosts: ASA
+  gather_facts: no
+  connection: network_cli
+
+  vars:
+          innerBlock: false
+          outerBlock: true
+
+  tasks:
+
+  - name: Outer Block Test
+    block:
+      - name: Outer Debug 1
+        debug: msg="This is outer debug 1"
+      
+      - name: Inner Block  
+        block:
+          - name: First Inner Block Line
+            debug: msg="This is the Inner Debug"
+
+        when: innerBlock == true
+
+      - name: Second Outer Block Line
+        debug:
+          msg: This is outter Debug 2
+
+    when: outerBlock == true
