@@ -99,49 +99,51 @@
     tags: asdmFact
 ###################################################
 
-############### ASDM COPY OPERATION ###############
-  block:
-    - name: Copy ASDM Image to Disk - "copy /noconfirm {{ asaFileTransport }}://{{ asaFileHost }}/{{ asaAsdmImage }} disk0:/{{ asaAsdmImage }}"
-      asa_command:
-        commands:
-          - copy /noconfirm {{ asaFileTransport }}://{{ asaFileHost }}/{{ asaAsdmImage }} disk0:/{{ asaAsdmImage }}
-        wait_for:
-          - result[0] contains copied
-      register: _asdmDeploy
-      vars:
-        ansible_command_timeout: 3605
-      tags: asdmDeploy
-  
-    - name: Debug ASDM image deployment when failed
-      debug:
-        var: _asdmDeploy
-      when: >
-        (playbook_debug_level > 0) or
-        (_asdmDeploy is failed)
-      tags: asdmDeploy
 
-    - name: List Directory for Image Name
-      asa_command:
-        commands:
-          - dir disk0:/{{ asaAsdmImage }}
-      register: _asaAsdmDirCopy
-      tags: asdmFact
+############### ASDM COPY OPERATION ###############
+  - name: ASDM Copy Block
+    block:
+      - name: Copy ASDM Image to Disk - "copy /noconfirm {{ asaFileTransport }}://{{ asaFileHost }}/{{ asaAsdmImage }} disk0:/{{ asaAsdmImage }}"
+        asa_command:
+          commands:
+            - copy /noconfirm {{ asaFileTransport }}://{{ asaFileHost }}/{{ asaAsdmImage }} disk0:/{{ asaAsdmImage }}
+          wait_for:
+            - result[0] contains copied
+        register: _asdmDeploy
+        vars:
+          ansible_command_timeout: 3605
+        tags: asdmDeploy
+    
+      - name: Debug ASDM image deployment when failed
+        debug:
+          var: _asdmDeploy
+        when: >
+          (playbook_debug_level > 0) or
+          (_asdmDeploy is failed)
+        tags: asdmDeploy
   
-    - name: Set asaAsdmExists to True
-      sef_fact:
-        asaAsdmExists: true
-      when: asaAsdmImage in _asaAsdmDirCopy
-      tags: asdmFact
-  
-    - name: Set asaAsdmExists to False
-      sef_fact:
-        asaAsdmExists: false
-      when: asaAsdmImage not in _asaAsdmDirCopy
-      tags: asdmFact
-  when: 
-    - asaAsdmExists is false
-    - asaAsdmCopy is true
-  tags: asdmDeploy
+      - name: List Directory for Image Name
+        asa_command:
+          commands:
+            - dir disk0:/{{ asaAsdmImage }}
+        register: _asaAsdmDirCopy
+        tags: asdmFact
+    
+      - name: Set asaAsdmExists to True
+        sef_fact:
+          asaAsdmExists: true
+        when: asaAsdmImage in _asaAsdmDirCopy
+        tags: asdmFact
+    
+      - name: Set asaAsdmExists to False
+        sef_fact:
+          asaAsdmExists: false
+        when: asaAsdmImage not in _asaAsdmDirCopy
+        tags: asdmFact
+    when: 
+      - asaAsdmExists is false
+      - asaAsdmCopy is true
+    tags: asdmDeploy
 ############### END ASDM COPY ###############
 
   - name: Tasks When ASDM Image Exists
