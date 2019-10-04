@@ -87,13 +87,13 @@
     tags: asdmFact
 
   - name: Set asaAsdmExists to True
-    sef_fact:
+    set_fact:
       asaAsdmExists: true
     when: asaAsdmImage in _asaAsdmDir
     tags: asdmFact
 
   - name: Set asaAsdmExists to False
-    sef_fact:
+    set_fact:
       asaAsdmExists: false
     when: asaAsdmImage not in _asaAsdmDir
     tags: asdmFact
@@ -130,13 +130,13 @@
         tags: asdmFact
     
       - name: Set asaAsdmExists to True
-        sef_fact:
+        set_fact:
           asaAsdmExists: true
         when: asaAsdmImage in _asaAsdmDirCopy
         tags: asdmFact
     
       - name: Set asaAsdmExists to False
-        sef_fact:
+        set_fact:
           asaAsdmExists: false
         when: asaAsdmImage not in _asaAsdmDirCopy
         tags: asdmFact
