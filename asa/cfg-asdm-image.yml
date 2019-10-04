@@ -149,7 +149,7 @@
   - name: Tasks When ASDM Image Exists
     block:
 ############### IMAGE VERIFY ###############
-      - name: Run Verify For Image - verify disk0:/"{{ asaAsdmImage }}"
+      - name: Run Verify For Image - verify disk0:/{{ asaAsdmImage }}
         block:
             asa_command:
               commands:
