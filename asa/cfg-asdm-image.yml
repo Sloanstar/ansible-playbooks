@@ -192,6 +192,20 @@
           (playbook_debug_level > 3) or
           (_asdmVerify is failed)
         tags: asdmVerify
+
+      - name: Get Embedded Line
+        set_fact:
+          lineEmbedded: "{{ lineEmbedded|default([]) + [item] }}"
+        when: "embedded" in item|lower
+        with_items:
+          - _asdmVerify.stdout_lines[0]
+        tags: asdmVerify
+
+      - name: Debug lineEmbedded
+        debug:
+          var: lineEmbedded
+          verbosity: 3
+        tags: asdmVerify
     
       - name: Gather Checksums
         set_fact:
@@ -209,6 +223,7 @@
         debug:
           var: _asdmVerify.stdout_lines
         when: _setChecksum is failed
+        tags: asdmVerify
     
       - name: Log Passed Checksum
         debug:
