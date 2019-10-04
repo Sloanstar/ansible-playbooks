@@ -149,8 +149,9 @@
   - name: Tasks When ASDM Image Exists
     block:
 ############### IMAGE VERIFY ###############
-      - name: Run Verify For Image - verify disk0:/{{ asaAsdmImage }}
+      - name: Check Image / Rescue with Copy
         block:
+          - name: Run Verify For Image - verify disk0:/{{ asaAsdmImage }}
             asa_command:
               commands:
                 - verify disk0:/{{ asaAsdmImage }}
