@@ -149,77 +149,77 @@
   - name: Tasks When ASDM Image Exists
     block:
 ############### IMAGE VERIFY ###############
-    - name: Run Verify For Image - verify disk0:/{{ asaAsdmImage }}
-      block:
-          asa_command:
-            commands:
-              - verify disk0:/{{ asaAsdmImage }}
-          register: _asdmVerify
-          failed_when: "'error' in _asdmVerify.stdout[0]|lower"
-          tags: asdmVerify
-      rescue:
-        - name: Verify Error Rescue - copy /noconfirm {{ asaFileTransport }}://{{ asaFileHost }}/{{ asaAsdmImage }} disk0:/{{ asaAsdmImage }}
-          asa_command:
-            commands:
-              - copy /noconfirm {{ asaFileTransport }}://{{ asaFileHost }}/{{ asaAsdmImage }} disk0:/{{ asaAsdmImage }}
-            wait_for:
-              - result[0] contains copied
-          register: _asdmDeploy
-          vars:
-            ansible_command_timeout: 3605
-          tags: asdmDeploy
-      ignore_errors: yes
-  
-    - name: Debug Failed verify
-      debug:
-        var: _asdmVerify
-        verbosity: 2
-      when: >
-        (playbook_debug_level > 3) or
-        (_asdmVerify is failed)
-      tags: asdmVerify
-  
-    - name: Gather Checksums
-      set_fact:
-        asdmEmbedded: "{{ _asdmVerify.stdout_lines[0][2].split(':')[1]|trim }}"
-        asdmCalculated: "{{ _asdmVerify.stdout_lines[0][3].split(':')[1]|trim }}"
-      register: _setChecksum
-      failed_when: >
-        (asdmEmbedded == "") or
-        (asdmCalculated == "") or
-        (asdmEmbedded != asdmCalculated)
-      tags: asdmVerify
-  
-    - name: Log Passed Checksum
-      debug:
-        msg: "\nFile checksum OK!\n{{ asdmCalculated }}\n"
-      when: _setChecksum is success
-      tags: asdmVerify
-  
-    - name: Log Failed Checksum
-      debug:
-        msg: "\nasdmEmbedded: {{ asdmEmbedded }}\nasdmCalculated: {{ asdmCalculated }}\n"
-      when: _setChecksum is failed
-      tags: asdmVerify
-############# END IMAGE VERIFY ###############
+      - name: Run Verify For Image - verify disk0:/"{{ asaAsdmImage }}"
+        block:
+            asa_command:
+              commands:
+                - verify disk0:/{{ asaAsdmImage }}
+            register: _asdmVerify
+            failed_when: "'error' in _asdmVerify.stdout[0]|lower"
+            tags: asdmVerify
+        rescue:
+          - name: Verify Error Rescue - copy /noconfirm {{ asaFileTransport }}://{{ asaFileHost }}/{{ asaAsdmImage }} disk0:/{{ asaAsdmImage }}
+            asa_command:
+              commands:
+                - copy /noconfirm {{ asaFileTransport }}://{{ asaFileHost }}/{{ asaAsdmImage }} disk0:/{{ asaAsdmImage }}
+              wait_for:
+                - result[0] contains copied
+            register: _asdmDeploy
+            vars:
+              ansible_command_timeout: 3605
+            tags: asdmDeploy
+        ignore_errors: yes
     
-############### SET ASDM IMAGE ####################
-    - name: Set ASDM Image - asdm image disk0:/{{ asaAsdmImage }}
-      asa_config:
-        lines:
-          - asdm image disk0:/{{ asaAsdmImage }}
-      register: _asdmConfig
-      when: _setChecksum is success
-      failed_when: _setChecksum is failed
-      tags: asdmConfig
-  
-    - name: Debug Failed verify
-      debug:
-        var: _asdmConfig
-      when: >
-        (playbook_debug_level > 3) or
-        (_asdmConfig is failed)
-      tags: asdmConfig
+      - name: Debug Failed verify
+        debug:
+          var: _asdmVerify
+          verbosity: 2
+        when: >
+          (playbook_debug_level > 3) or
+          (_asdmVerify is failed)
+        tags: asdmVerify
+    
+      - name: Gather Checksums
+        set_fact:
+          asdmEmbedded: "{{ _asdmVerify.stdout_lines[0][2].split(':')[1]|trim }}"
+          asdmCalculated: "{{ _asdmVerify.stdout_lines[0][3].split(':')[1]|trim }}"
+        register: _setChecksum
+        failed_when: >
+          (asdmEmbedded == "") or
+          (asdmCalculated == "") or
+          (asdmEmbedded != asdmCalculated)
+        tags: asdmVerify
+    
+      - name: Log Passed Checksum
+        debug:
+          msg: "\nFile checksum OK!\n{{ asdmCalculated }}\n"
+        when: _setChecksum is success
+        tags: asdmVerify
+    
+      - name: Log Failed Checksum
+        debug:
+          msg: "\nasdmEmbedded: {{ asdmEmbedded }}\nasdmCalculated: {{ asdmCalculated }}\n"
+        when: _setChecksum is failed
+        tags: asdmVerify
+####  ######### END IMAGE VERIFY ###############
+      
+####  ########### SET ASDM IMAGE ####################
+      - name: Set ASDM Image - asdm image disk0:/{{ asaAsdmImage }}
+        asa_config:
+          lines:
+            - asdm image disk0:/{{ asaAsdmImage }}
+        register: _asdmConfig
+        when: _setChecksum is success
+        failed_when: _setChecksum is failed
+        tags: asdmConfig
+    
+      - name: Debug Failed verify
+        debug:
+          var: _asdmConfig
+        when: >
+          (playbook_debug_level > 3) or
+          (_asdmConfig is failed)
+        tags: asdmConfig
 ###################################################
 
 ############### END BLOCK CONDITIONAL #############
