@@ -18,7 +18,7 @@
 
   vars:
           playbook_debug_level: 0
-          asaAsdmCopy: "{{ asaAsdmCopy|default('false') }}"
+          asaAsdmCopy: "{{ asaAsdmCopy|default(false) }}"
 
   tasks:
 
@@ -97,6 +97,18 @@
       asaAsdmExists: false
     when: asaAsdmImage not in _asaAsdmDir.stdout[0]
     tags: asdmFact
+
+  - name: asaAsdmExists Value
+    debug:
+      var: asaAsdmExists
+      verbosity: 3
+    tags: asdmFact
+
+  - name: asaAsdmCopy Value
+    debug:
+      var: asaAsdmCopy
+      verbosity: 3
+    tags: asdmFact
 ###################################################
 
 
@@ -169,6 +181,7 @@
             vars:
               ansible_command_timeout: 3605
             tags: asdmDeploy
+          # TODO - Re-verify
         ignore_errors: yes
     
       - name: Debug Failed verify
