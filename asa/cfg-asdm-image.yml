@@ -86,15 +86,15 @@
     register: _asaAsdmDir
     tags: asdmFact
 
-  - name: Set asaAsdmExists to True
+  - name: Set asaAsdmExists to Yes
     set_fact:
-      asaAsdmExists: true
+      asaAsdmExists: yes
     when: asaAsdmImage in _asaAsdmDir
     tags: asdmFact
 
-  - name: Set asaAsdmExists to False
+  - name: Set asaAsdmExists to No
     set_fact:
-      asaAsdmExists: false
+      asaAsdmExists: no
     when: asaAsdmImage not in _asaAsdmDir
     tags: asdmFact
 ###################################################
@@ -129,20 +129,20 @@
         register: _asaAsdmDirCopy
         tags: asdmFact
     
-      - name: Set asaAsdmExists to True
+      - name: Set asaAsdmExists to Yes
         set_fact:
-          asaAsdmExists: true
+          asaAsdmExists: yes
         when: asaAsdmImage in _asaAsdmDirCopy
         tags: asdmFact
     
-      - name: Set asaAsdmExists to False
+      - name: Set asaAsdmExists to No
         set_fact:
-          asaAsdmExists: false
+          asaAsdmExists: no
         when: asaAsdmImage not in _asaAsdmDirCopy
         tags: asdmFact
     when: 
-      - asaAsdmExists is false
-      - asaAsdmCopy is true
+      - asaAsdmExists is no
+      - asaAsdmCopy is yes
     tags: asdmDeploy
 ############### END ASDM COPY ###############
 
