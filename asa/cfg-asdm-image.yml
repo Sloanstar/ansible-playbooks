@@ -18,7 +18,7 @@
 
   vars:
           playbook_debug_level: 0
-          asaAsdmCopy: "{{ asaAsdmCopy|default(false) }}"
+          asaAsdmCopy: "{{ AsdmCopy | default(false) }}"
 
   tasks:
 
