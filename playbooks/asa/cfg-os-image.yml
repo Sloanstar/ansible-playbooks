@@ -1,0 +1,132 @@
+---
+- name: ASA Configure Boot OS Image
+  hosts: ASA
+  gather_facts: no
+  connection: network_cli
+
+  #Author:              Jason A. Sloan
+  #Tested OS:           ASA 9.6.4+
+  #Tested Models:       5516,5545,5585
+  #Tested Modes:        Single Context, Multi Context
+
+  # Known Issue:
+  # Due to ASA SSH timeout configuration limitations I am unable to stay connected to the ASA for a period of longer than 60 mins.
+  # If the ASA copy operation takes longer than 60 mins, the socket will be forcibly closed by the remote (ASA) side.
+  # For this reason smaller binaries are transferred first.
+  # The copy operation seems to continue even after the SSH socket is terminated (at least when using tftp).
+  # As a workaround you can run the playbook with -t osVerify, sshTimeout to do a verification on the operating system later and reset your SSH timeout
+
+  vars:
+          playbook_debug_level: 0
+
+  tasks:
+  - name: Switch to [SYSTEM] context
+    asa_command:
+      commands:
+        - changeto system
+    register: _asaContextSystem
+    vars:
+      ansible_command_timeout: 180
+    when: asaMulticontext == "true"
+    tags: always
+
+############### RECORD CURRENT BOOT ###############
+  - name: Get Current Boot Variable
+    asa_command:
+      commands:
+        - show run boot system
+    register: _asaOsShow
+    tags: asaOsFact
+
+  - name: Debug Boot Show
+    debug:
+      var: _asaOShow
+      verbosity: 2
+    when: _asaOsShow is failed
+    tags: asaOsFact
+###################################################
+
+############### SHOW CURRENT OS ###################
+  - name: Set Fact - Boot Image
+    set_fact:
+      asaCurrentOs: "{{ _asaOsShow.stdout[0].split('/')[-1]|trim }}"
+    tags: asaOsFact
+
+  - name: Display current BOOT OS Version
+    debug:
+      var: asaCurrentOs
+    when: asaCurrentOs != ""
+    tags: asaOsFact
+###################################################
+
+############### IMAGE VERIFY ###############
+  - name: Run Verify for new image - verify disk0:/{{ asaOsImage }}
+    asa_command:
+      commands:
+        - verify disk0:/{{ asaOsImage }}
+    register: _asaOsVerify
+    failed_when: "'error' in _asaOsVerify.stdout[0]|lower"
+    tags: asaOsVerify
+
+  - name: Debug Failed verify
+    debug:
+      var: _asaOsVerify
+      verbosity: 2
+    when: >
+      (playbook_debug_level > 3) or
+      (_asaOsVerify is failed)
+    tags: asaOsVerify
+
+  - name: Gather Checksums
+    set_fact:
+      asaOsEmbedded: "{{ _asaOsVerify.stdout_lines[0][2].split(':')[1]|trim }}"
+      asaOsCalculated: "{{ _asaOsVerify.stdout_lines[0][3].split(':')[1]|trim }}"
+    register: _setChecksum
+    failed_when: >
+      (asaOsEmbedded == "") or
+      (asaOsCalculated == "") or
+      (asaOsEmbedded != asaOsCalculated)
+    tags: asaOsVerify
+
+  - name: Log Passed Checksum
+    debug:
+      msg: "\nFile checksum OK!\n{{ asaOsCalculated }}\n"
+    when: _setChecksum is success
+    tags: asaOsVerify
+
+  - name: Log Failed Checksum
+    debug:
+      msg: "\nasaOsEmbedded: {{ asaOsEmbedded }}\nasaOsCalculated: {{ asaOsCalculated }}\n"
+    when: _setChecksum is failed
+    tags: asaOsVerify
+############# END IMAGE VERIFY ###############
+    
+############### SET NEW BOOT IMAGE ####################
+  - name: Set BOOT OS Image - boot system disk0:/{{ asaOsImage }}
+    asa_config:
+      lines:
+        - clear configure boot system
+        - boot system disk0:/{{ asaOsImage }}
+    register: _asaOsConfig
+    when: _setChecksum is success
+    failed_when: _setChecksum is failed
+    tags: asaOsConfig
+
+  - name: Debug Failed verify
+    debug:
+      var: _asaOsConfig
+    when: >
+      (playbook_debug_level > 3) or
+      (_asaOsConfig is failed)
+    tags: asaOsConfig
+###################################################
+
+  - name: Switch to [ADMIN] context
+    asa_command:
+      commands:
+        - changeto context admin
+    register: _asaContextAdmin
+    vars:
+      ansible_command_timeout: 180
+    when: asaMulticontext == "true"
+    tags: always

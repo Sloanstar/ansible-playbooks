@@ -1,0 +1,224 @@
+---
+- name: ASA Binary Deployment
+  hosts: ASA
+  gather_facts: no
+  connection: network_cli
+
+  #Author:              Jason A. Sloan
+  #Tested OS:           ASA 9.6.4+
+  #Tested Models:       5516,5545,5585
+  #Tested Modes:        Single Context, Multi Context
+
+  # Known Issue:
+  # Due to ASA SSH timeout configuration limitations I am unable to stay connected to the ASA for a period of longer than 60 mins.
+  # If the ASA copy operation takes longer than 60 mins, the socket will be forcibly closed by the remote (ASA) side.
+  # For this reason smaller binaries are transferred first.
+  # The copy operation seems to continue even after the SSH socket is terminated (at least when using tftp).
+  # As a workaround you can run the playbook with -t osVerify, sshTimeout to do a verification on the operating system later and reset your SSH timeout
+
+  vars:
+          playbook_debug_level: 0
+
+  tasks:
+  - name: Set Maximum SSH timeout
+    asa_config:
+      lines:
+        - ssh timeout 60
+    register: _sshTimeoutRemove
+    vars:
+      ansible_command_timeout: 180
+    tags: sshTimeout
+
+  - name: Debug SSH Timeout Removal
+    debug:
+      var: _sshTimeoutRemove
+    when: >
+      (playbook_debug_level > 0) or
+      (_sshTimeoutRemove is failed)
+    tags: sshTimeout
+
+  - name: Switch to [SYSTEM] context
+    asa_command:
+      commands:
+        - changeto system
+    register: _asaContextSystem
+    vars:
+      ansible_command_timeout: 180
+    when: asaMulticontext == "true"
+    tags: always
+
+############### REST API COPY OPERATION ###############
+  - name: Copy REST API to Disk - "copy /noconfirm {{ asaFileTransport }}://{{ asaFileHost }}/{{ asaRestImage }} disk0:/{{ asaRestImage }}"
+    asa_command:
+      commands:
+        - copy /noconfirm {{ asaFileTransport }}://{{ asaFileHost }}/{{ asaRestImage }} disk0:/{{ asaRestImage }}
+      wait_for:
+        - result[0] contains copied
+    register: _restCopy
+    vars:
+      ansible_command_timeout: 3605
+    tags: restDeploy
+
+  - name: Debug REST API deployment when failed
+    debug:
+      var: _restCopy
+    when: >
+      (playbook_debug_level > 0) or
+      (_restCopy is failed)
+    tags: restDeploy
+############### END REST API COPY ###############
+
+#
+# TODO: Build function to collect wrapped SHA2 signature from REST API and check it.
+#
+
+############### ASDM COPY OPERATION ###############
+  - name: Copy ASDM Image to Disk - "copy /noconfirm {{ asaFileTransport }}://{{ asaFileHost }}/{{ asaAsdmImage }} disk0:/{{ asaAsdmImage }}"
+    asa_command:
+      commands:
+        - copy /noconfirm {{ asaFileTransport }}://{{ asaFileHost }}/{{ asaAsdmImage }} disk0:/{{ asaAsdmImage }}
+      wait_for:
+        - result[0] contains copied
+    register: _asdmDeploy
+    vars:
+      ansible_command_timeout: 3605
+    tags: asdmDeploy
+
+  - name: Debug ASDM image deployment when failed
+    debug:
+      var: _asdmDeploy
+    when: >
+      (playbook_debug_level > 0) or
+      (_asdmDeploy is failed)
+    tags: asdmDeploy
+############### END ASDM COPY ###############
+
+############### ASDM IMAGE VERIFY ###############
+  - name: Run Verify For Image - verify disk0:/{{ asaAsdmImage }}
+    asa_command:
+      commands:
+        - verify disk0:/{{ asaAsdmImage }}
+    register: _asaAsdmVerify
+    failed_when: "'error' in _asaAsdmVerify.stdout[0]|lower"
+    tags: asaAsdmDeploy, asaAsdmVerify
+
+  - name: Debug Failed verify
+    debug:
+      var: _asaAsdmVerify
+    when: >
+      (playbook_debug_level > 3) or
+      (_asaAsdmVerify is failed)
+    tags: asaAsdmDeploy, asaAsdmVerify
+
+  - name: Gather ASDM Checksums
+    set_fact:
+      asaAsdmEmbedded: "{{ _asaAsdmVerify.stdout_lines[0][2].split(':')[1]|trim }}"
+      asaAsdmCalculated: "{{ _asaAsdmVerify.stdout_lines[0][3].split(':')[1]|trim }}"
+    register: _setAsdmChecksum
+    failed_when: >
+      (asaAsdmEmbedded == "") or
+      (asaAsdmCalculated == "") or
+      (asaAsdmEmbedded != asaAsdmCalculated)
+    tags: asaAsdmDeploy, asaAsdmVerify
+
+  - name: Log Passed Checksum
+    debug:
+      msg: "\nFile checksum OK!\n{{ asaAsdmCalculated }}\n"
+    when: _setAsdmChecksum is success
+    tags: asaAsdmDeploy, asaAsdmVerify
+
+  - name: Log Failed Checksum
+    debug:
+      msg: "\nasaAsdmEmbedded: {{ asaAsdmEmbedded }}\nasaAsdmCalculated: {{ asaAsdmCalculated }}\n"
+    when: _setAsdmChecksum is failed
+    tags: asaAsdmDeploy, asaAsdmVerify
+############### END ASDM IMAGE VERIFY ###############
+
+############### OS IMAGE COPY OPERATION ###############
+  - name: Copy OS Image to Disk - "copy /noconfirm {{ asaFileTransport }}://{{ asaFileHost }}/{{ asaOsImage }} disk0:/{{ asaOsImage }}"
+    asa_command:
+      commands:
+        - copy /noconfirm {{ asaFileTransport }}://{{ asaFileHost}}/{{ asaOsImage }} disk0:/{{ asaOsImage }}
+      wait_for:
+        - result[0] contains copied
+    register: _osDeploy
+    vars:
+      ansible_command_timeout: 3605
+    tags: osDeploy
+
+  - name: Debug Failed OS Copy
+    debug:
+      var: _osDeploy
+    when: >
+      (playbook_debug_level > 0) or
+      (_osDeploy is failed)
+    tags: osDeploy
+############### END OS IMAGE COPY ###############
+
+############### OS IMAGE VERIFY ###############
+  - name: Run Verify For Image - verify disk0:/{{ asaOsImage }}
+    asa_command:
+      commands:
+        - verify disk0:/{{ asaOsImage }}
+    register: _osVerify
+    failed_when: "'error' in _osVerify.stdout[0]|lower"
+    tags: osDeploy, osVerify
+
+  - name: Debug Failed verify
+    debug:
+      var: _osVerify
+    when: >
+      (playbook_debug_level > 3) or
+      (_osVerify is failed)
+    tags: osDeploy, osVerify
+
+  - name: Gather Checksums
+    set_fact:
+      osEmbedded: "{{ _osVerify.stdout_lines[0][2].split(':')[1]|trim }}"
+      osCalculated: "{{ _osVerify.stdout_lines[0][3].split(':')[1]|trim }}"
+    register: _setChecksum
+    failed_when: >
+      (osEmbedded == "") or
+      (osCalculated == "") or
+      (osEmbedded != osCalculated)
+    tags: osDeploy, osVerify
+
+  - name: Log Passed Checksum
+    debug:
+      msg: "\nFile checksum OK!\n{{ osCalculated }}\n"
+    when: _setChecksum is success
+    tags: osDeploy, osVerify
+
+  - name: Log Failed Checksum
+    debug:
+      msg: "\nosEmbedded: {{ osEmbedded }}\nosCalculated: {{ osCalculated }}\n"
+    when: _setChecksum is failed
+    tags: osDeploy, osVerify
+############### END OS IMAGE VERIFY ###############
+
+  - name: Switch to [ADMIN] context
+    asa_command:
+      commands:
+        - changeto context admin
+    register: _asaContextAdmin
+    vars:
+      ansible_command_timeout: 180
+    when: asaMulticontext == "true"
+    tags: always
+
+  - name: Set SSH Timeout Back to Desired Value ({{ asaSshTimeout }})
+    asa_config:
+      lines:
+        - ssh timeout {{ asaSshTimeout }}
+    register: _sshTimeoutAdd
+    vars:
+      ansible_command_timeout: 180
+    tags: sshTimeout
+
+  - name: Debug setting SSH timeout to {{ asaSshTimeout }} min when failed
+    debug:
+      var: _sshTimeoutAdd
+    when: >
+      (playbook_debug_level > 0) or
+      (_sshTimeoutAdd is failed)
+    tags: sshTimeout

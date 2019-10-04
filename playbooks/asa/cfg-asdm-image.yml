@@ -1,0 +1,252 @@
+---
+- name: ASA Binary Deployment
+  hosts: ASA
+  gather_facts: no
+  connection: network_cli
+
+  #Author:              Jason A. Sloan
+  #Tested OS:           ASA 9.6.4+
+  #Tested Models:       5516,5545,5585
+  #Tested Modes:        Single Context, Multi Context
+
+  # Known Issue:
+  # Due to ASA SSH timeout configuration limitations I am unable to stay connected to the ASA for a period of longer than 60 mins.
+  # If the ASA copy operation takes longer than 60 mins, the socket will be forcibly closed by the remote (ASA) side.
+  # For this reason smaller binaries are transferred first.
+  # The copy operation seems to continue even after the SSH socket is terminated (at least when using tftp).
+  # As a workaround you can run the playbook with -t osVerify, sshTimeout to do a verification on the operating system later and reset your SSH timeout
+
+  vars:
+          playbook_debug_level: 0
+          asaAsdmCopy: "{{ asaAsdmCopy | default("false") }}"
+
+  tasks:
+
+  - name: Set Maximum SSH timeout
+    asa_config:
+      lines:
+        - ssh timeout 60
+    register: _sshTimeoutRemove
+    vars:
+      ansible_command_timeout: 180
+    tags: sshTimeout
+
+  - name: Debug SSH Timeout Removal
+    debug:
+      var: _sshTimeoutRemove
+    when: >
+      (playbook_debug_level > 0) or
+      (_sshTimeoutRemove is failed)
+    tags: sshTimeout
+
+  - name: Switch to [SYSTEM] context
+    asa_command:
+      commands:
+        - changeto system
+    register: _asaContextSystem
+    vars:
+      ansible_command_timeout: 180
+    when: asaMulticontext == "true"
+    tags: always
+
+############### RECORD CURRENT ASDM ###############
+  - name: Get ASDM Setting
+    asa_command:
+      commands:
+        - show asdm image
+    register: _asdmShow
+    tags: asdmFact
+
+  - name: Debug ASDM Show
+    debug:
+      var: _asdmShow
+      verbosity: 2
+    when: _asdmShow is failed
+    tags: asdmFact
+###################################################
+
+############### SHOW CURRENT ASDM #################
+  - name: Set Fact - ASDM Image
+    set_fact:
+      asaCurrentAsdm: "{{ _asdmShow.stdout[0].split('/')[-1]|trim }}"
+    tags: asdmFact
+
+  - name: Display current ASDM Version
+    debug:
+      var: asaCurrentAsdm
+    when: asaCurrentAsdm != ""
+    tags: asdmFact
+###################################################
+
+############### IMAGE EXISTS ######################
+  - name: List Directory for Image Name
+    asa_command:
+      commands:
+        - dir disk0:/{{ asaAsdmImage }}
+    register: _asaAsdmDir
+    tags: asdmFact
+
+  - name: Set asaAsdmExists to True
+    sef_fact:
+      asaAsdmExists: true
+    when: asaAsdmImage in _asaAsdmDir
+    tags: asdmFact
+
+  - name: Set asaAsdmExists to False
+    sef_fact:
+      asaAsdmExists: false
+    when: asaAsdmImage not in _asaAsdmDir
+    tags: asdmFact
+###################################################
+
+############### ASDM COPY OPERATION ###############
+  block:
+    - name: Copy ASDM Image to Disk - "copy /noconfirm {{ asaFileTransport }}://{{ asaFileHost }}/{{ asaAsdmImage }} disk0:/{{ asaAsdmImage }}"
+      asa_command:
+        commands:
+          - copy /noconfirm {{ asaFileTransport }}://{{ asaFileHost }}/{{ asaAsdmImage }} disk0:/{{ asaAsdmImage }}
+        wait_for:
+          - result[0] contains copied
+      register: _asdmDeploy
+      vars:
+        ansible_command_timeout: 3605
+      tags: asdmDeploy
+  
+    - name: Debug ASDM image deployment when failed
+      debug:
+        var: _asdmDeploy
+      when: >
+        (playbook_debug_level > 0) or
+        (_asdmDeploy is failed)
+      tags: asdmDeploy
+
+    - name: List Directory for Image Name
+      asa_command:
+        commands:
+          - dir disk0:/{{ asaAsdmImage }}
+      register: _asaAsdmDirCopy
+      tags: asdmFact
+  
+    - name: Set asaAsdmExists to True
+      sef_fact:
+        asaAsdmExists: true
+      when: asaAsdmImage in _asaAsdmDirCopy
+      tags: asdmFact
+  
+    - name: Set asaAsdmExists to False
+      sef_fact:
+        asaAsdmExists: false
+      when: asaAsdmImage not in _asaAsdmDirCopy
+      tags: asdmFact
+  when: 
+    - asaAsdmExists is false
+    - asaAsdmCopy is true
+  tags: asdmDeploy
+############### END ASDM COPY ###############
+
+  block:
+    - name: Tasks When ASDM Image Exists
+############### IMAGE VERIFY ###############
+      block:
+        - name: Run Verify For Image - verify disk0:/{{ asaAsdmImage }}
+          asa_command:
+            commands:
+              - verify disk0:/{{ asaAsdmImage }}
+          register: _asdmVerify
+          failed_when: "'error' in _asdmVerify.stdout[0]|lower"
+          tags: asdmVerify
+      rescue:
+        - name: Verify Error Rescue - copy /noconfirm {{ asaFileTransport }}://{{ asaFileHost }}/{{ asaAsdmImage }} disk0:/{{ asaAsdmImage }}
+          asa_command:
+            commands:
+              - copy /noconfirm {{ asaFileTransport }}://{{ asaFileHost }}/{{ asaAsdmImage }} disk0:/{{ asaAsdmImage }}
+            wait_for:
+              - result[0] contains copied
+          register: _asdmDeploy
+          vars:
+            ansible_command_timeout: 3605
+          tags: asdmDeploy
+      ignore_errors: yes
+  
+    - name: Debug Failed verify
+      debug:
+        var: _asdmVerify
+        verbosity: 2
+      when: >
+        (playbook_debug_level > 3) or
+        (_asdmVerify is failed)
+      tags: asdmVerify
+  
+    - name: Gather Checksums
+      set_fact:
+        asdmEmbedded: "{{ _asdmVerify.stdout_lines[0][2].split(':')[1]|trim }}"
+        asdmCalculated: "{{ _asdmVerify.stdout_lines[0][3].split(':')[1]|trim }}"
+      register: _setChecksum
+      failed_when: >
+        (asdmEmbedded == "") or
+        (asdmCalculated == "") or
+        (asdmEmbedded != asdmCalculated)
+      tags: asdmVerify
+  
+    - name: Log Passed Checksum
+      debug:
+        msg: "\nFile checksum OK!\n{{ asdmCalculated }}\n"
+      when: _setChecksum is success
+      tags: asdmVerify
+  
+    - name: Log Failed Checksum
+      debug:
+        msg: "\nasdmEmbedded: {{ asdmEmbedded }}\nasdmCalculated: {{ asdmCalculated }}\n"
+      when: _setChecksum is failed
+      tags: asdmVerify
+############# END IMAGE VERIFY ###############
+    
+############### SET ASDM IMAGE ####################
+    - name: Set ASDM Image - asdm image disk0:/{{ asaAsdmImage }}
+      asa_config:
+        lines:
+          - asdm image disk0:/{{ asaAsdmImage }}
+      register: _asdmConfig
+      when: _setChecksum is success
+      failed_when: _setChecksum is failed
+      tags: asdmConfig
+  
+    - name: Debug Failed verify
+      debug:
+        var: _asdmConfig
+      when: >
+        (playbook_debug_level > 3) or
+        (_asdmConfig is failed)
+      tags: asdmConfig
+###################################################
+
+############### END BLOCK CONDITIONAL #############
+  when: asaAsdmExists is true
+###################################################
+
+  - name: Switch to [ADMIN] context
+    asa_command:
+      commands:
+        - changeto context admin
+    register: _asaContextAdmin
+    vars:
+      ansible_command_timeout: 180
+    when: asaMulticontext == "true"
+    tags: always
+
+  - name: Set SSH Timeout Back to Desired Value ({{ asaSshTimeout }})
+    asa_config:
+      lines:
+        - ssh timeout {{ asaSshTimeout }}
+    register: _sshTimeoutAdd
+    vars:
+      ansible_command_timeout: 180
+    tags: sshTimeout
+
+  - name: Debug setting SSH timeout to {{ asaSshTimeout }} min when failed
+    debug:
+      var: _sshTimeoutAdd
+    when: >
+      (playbook_debug_level > 0) or
+      (_sshTimeoutAdd is failed)
+    tags: sshTimeout
