@@ -89,13 +89,13 @@
   - name: Set asaAsdmExists to Yes
     set_fact:
       asaAsdmExists: true
-    when: asaAsdmImage in _asaAsdmDir
+    when: asaAsdmImage in _asaAsdmDir.stdout[0]
     tags: asdmFact
 
   - name: Set asaAsdmExists to No
     set_fact:
       asaAsdmExists: false
-    when: asaAsdmImage not in _asaAsdmDir
+    when: asaAsdmImage not in _asaAsdmDir.stdout[0]
     tags: asdmFact
 ###################################################
 
