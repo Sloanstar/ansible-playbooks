@@ -86,13 +86,13 @@
     register: _asaAsdmDir
     tags: asdmFact
 
-  - name: Set asaAsdmExists to Yes
+  - name: Set asaAsdmExists to true
     set_fact:
       asaAsdmExists: true
     when: asaAsdmImage in _asaAsdmDir.stdout[0]
     tags: asdmFact
 
-  - name: Set asaAsdmExists to No
+  - name: Set asaAsdmExists to false
     set_fact:
       asaAsdmExists: false
     when: asaAsdmImage not in _asaAsdmDir.stdout[0]
@@ -224,7 +224,7 @@
 ###################################################
 
 ############### END BLOCK CONDITIONAL #############
-    when: asaAsdmExists is true
+    when: asaAsdmExists == "true"
 ###################################################
 
   - name: Switch to [ADMIN] context
