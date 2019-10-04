@@ -18,7 +18,7 @@
 
   vars:
           playbook_debug_level: 0
-          asaAsdmCopy: "{{ asaAsdmCopy | default("false") }}"
+          asaAsdmCopy: "{{ asaAsdmCopy|default(false) }}"
 
   tasks:
 
@@ -144,11 +144,11 @@
   tags: asdmDeploy
 ############### END ASDM COPY ###############
 
-  block:
-    - name: Tasks When ASDM Image Exists
+  - name: Tasks When ASDM Image Exists
+    block:
 ############### IMAGE VERIFY ###############
+    - name: Run Verify For Image - verify disk0:/{{ asaAsdmImage }}
       block:
-        - name: Run Verify For Image - verify disk0:/{{ asaAsdmImage }}
           asa_command:
             commands:
               - verify disk0:/{{ asaAsdmImage }}
@@ -221,7 +221,7 @@
 ###################################################
 
 ############### END BLOCK CONDITIONAL #############
-  when: asaAsdmExists is true
+    when: asaAsdmExists is true
 ###################################################
 
   - name: Switch to [ADMIN] context
