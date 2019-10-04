@@ -153,8 +153,8 @@
         when: asaAsdmImage not in _asaAsdmDirCopy.stdout[0]
         tags: asdmFact
     when: 
-      - asaAsdmExists == "false"
-      - asaAsdmCopy == "true"
+      - asaAsdmExists == false
+      - asaAsdmCopy == true
     tags: asdmDeploy
 ############### END ASDM COPY ###############
 
@@ -237,7 +237,7 @@
 ###################################################
 
 ############### END BLOCK CONDITIONAL #############
-    when: asaAsdmExists == "true"
+    when: asaAsdmExists == true
 ###################################################
 
   - name: Switch to [ADMIN] context
