@@ -202,7 +202,13 @@
           (asdmEmbedded == "") or
           (asdmCalculated == "") or
           (asdmEmbedded != asdmCalculated)
+        ignore_errors: yes
         tags: asdmVerify
+
+      - name: Debug failed Gather Checksums
+        debug:
+          var: _asdmVerify.stdout_lines
+        when: _setChecksum is failed
     
       - name: Log Passed Checksum
         debug:
