@@ -18,7 +18,7 @@
 
   vars:
           playbook_debug_level: 0
-          asaAsdmCopy: "{{ asaAsdmCopy|default(false) }}"
+          asaAsdmCopy: "{{ asaAsdmCopy|default('false') }}"
 
   tasks:
 
@@ -88,13 +88,13 @@
 
   - name: Set asaAsdmExists to Yes
     set_fact:
-      asaAsdmExists: yes
+      asaAsdmExists: true
     when: asaAsdmImage in _asaAsdmDir
     tags: asdmFact
 
   - name: Set asaAsdmExists to No
     set_fact:
-      asaAsdmExists: no
+      asaAsdmExists: false
     when: asaAsdmImage not in _asaAsdmDir
     tags: asdmFact
 ###################################################
@@ -129,20 +129,20 @@
         register: _asaAsdmDirCopy
         tags: asdmFact
     
-      - name: Set asaAsdmExists to Yes
+      - name: Set asaAsdmExists to true
         set_fact:
-          asaAsdmExists: yes
-        when: asaAsdmImage in _asaAsdmDirCopy
+          asaAsdmExists: true
+        when: asaAsdmImage in _asaAsdmDirCopy.stdout[0]
         tags: asdmFact
     
-      - name: Set asaAsdmExists to No
+      - name: Set asaAsdmExists to false
         set_fact:
-          asaAsdmExists: no
-        when: asaAsdmImage not in _asaAsdmDirCopy
+          asaAsdmExists: false
+        when: asaAsdmImage not in _asaAsdmDirCopy.stdout[0]
         tags: asdmFact
     when: 
-      - asaAsdmExists is no
-      - asaAsdmCopy is yes
+      - asaAsdmExists == "false"
+      - asaAsdmCopy == "true"
     tags: asdmDeploy
 ############### END ASDM COPY ###############
 
