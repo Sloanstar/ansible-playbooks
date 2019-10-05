@@ -265,7 +265,7 @@
 
           - name: Gather Image Filenames
             set_fact:
-              asaAsdmInventory: "{{ asaAsdmInventory|default([]) + [item] }}"
+              asaAsdmInventory: "{{ asaAsdmInventory|default([]) + [item.split()[-1]] }}"
             when: item.split() | length == 8
             with_items:
               - "{{ _asaAsdmInventory.stdout_lines[0] }}"
@@ -273,7 +273,7 @@
           - name: Delete ASDM Images
             asa_command:
               commands:
-                - delete /noconfirm disk0:/{{ item.split()[-1] }}
+                - delete /noconfirm disk0:/{{ item }}
             when:
               - item.split()[-1] != asaAsdmImage
             with_items:
