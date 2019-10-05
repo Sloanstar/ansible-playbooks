@@ -18,7 +18,8 @@
 
   vars:
           playbook_debug_level: 0
-          asaAsdmCopy: "{{ AsdmCopy | default(false) }}"
+          asaAsdmCopy: "{{ AsdmCopy | default(false) | bool }}"
+          asaAsdmClean: "{{ AsdmClean | default(true) | bool }}"
 
   tasks:
 
@@ -89,13 +90,17 @@
   - name: Set asaAsdmExists to true
     set_fact:
       asaAsdmExists: true
-    when: asaAsdmImage in _asaAsdmDir.stdout[0]
+    when:
+      - asaAsdmImage in _asaAsdmDir.stdout[0]
+      - "'error' not in _asaAsdmDir.stdout[0]|lower"
     tags: asdmFact
 
   - name: Set asaAsdmExists to false
     set_fact:
       asaAsdmExists: false
-    when: asaAsdmImage not in _asaAsdmDir.stdout[0]
+    when: >
+      (asaAsdmImage not in _asaAsdmDir.stdout[0]) or
+      ('error' in _asaAsdmDir.stdout[0]|lower)
     tags: asdmFact
 
   - name: asaAsdmExists Value
@@ -146,7 +151,7 @@
           asaAsdmExists: true
         when:
           - asaAsdmImage in _asaAsdmDirCopy.stdout[0]
-          - "_asaAsdmDirCopy.stdout[0]|trim|lower not is search('error')"
+          - "'error' not in _asaAsdmDirCopy.stdout[0]|lower"
         tags: asdmFact
     
       - name: Set asaAsdmExists to false
@@ -247,6 +252,37 @@
           (playbook_debug_level > 3) or
           (_asdmConfig is failed)
         tags: asdmConfig
+
+
+###################### ASDM Cleanup #####################################
+      - name: Cleanup old ASDM Image
+        block:
+          - name: List ASDM Images
+            asa_command:
+              commands:
+                - dir disk0:/asdm-[0-9]*.bin
+            register: _asaAsdmInventory
+
+          - name: Gather Image Filenames
+            set_fact:
+              asaAsdmInventory: "{{ asaAsdmInventory|default([]) + [item] }}"
+            when: item.split() | length == 8
+            with_items:
+              - "{{ _asaAsdmInventory.stdout_lines[0] }}"
+
+          - name: Delete ASDM Images
+            asa_command:
+              commands:
+                - delete /noconfirm disk0:/{{ item.split()[-1] }}
+            when:
+              - item.split()[-1] != asaAsdmImage
+            with_items:
+              - "{{ asaAsdmInventory}}"
+        when:
+          - _asdmConfig is success
+          - asaAsdmClean == true
+
+#########################################################################
 
       - name: Save [SYSTEM] Context Configuration
         asa_command:
