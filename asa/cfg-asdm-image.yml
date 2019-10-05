@@ -144,13 +144,17 @@
       - name: Set asaAsdmExists to true
         set_fact:
           asaAsdmExists: true
-        when: asaAsdmImage in _asaAsdmDirCopy.stdout[0]
+        when:
+          - asaAsdmImage in _asaAsdmDirCopy.stdout[0]
+          - "_asaAsdmDirCopy.stdout[0]|trim|lower not is search('error')"
         tags: asdmFact
     
       - name: Set asaAsdmExists to false
         set_fact:
           asaAsdmExists: false
-        when: asaAsdmImage not in _asaAsdmDirCopy.stdout[0]
+        when: >
+          (asaAsdmImage not in _asaAsdmDirCopy.stdout[0]) or
+          ('error' in _asaAsdmDirCopy.stdout[0]|lower)
         tags: asdmFact
     when: 
       - asaAsdmExists == false
@@ -187,7 +191,8 @@
       - name: Get Embedded Checksum
         set_fact:
           asdmEmbedded: "{{ item.split(':')[1]|trim }}"
-        when: "item|trim|lower is search('embedded')"
+        when:
+          - "item|trim|lower is search('embedded')"
         with_items:
           - "{{ _asdmVerify.stdout_lines[0] }}"
         tags: asdmVerify
