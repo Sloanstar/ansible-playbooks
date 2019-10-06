@@ -1,5 +1,5 @@
 ---
-- name: ASA Binary Deployment
+- name: ASA ASDM Deployment / Configuration
   hosts: ASA
   gather_facts: no
   connection: network_cli
@@ -12,9 +12,8 @@
   # Known Issue:
   # Due to ASA SSH timeout configuration limitations I am unable to stay connected to the ASA for a period of longer than 60 mins.
   # If the ASA copy operation takes longer than 60 mins, the socket will be forcibly closed by the remote (ASA) side.
-  # For this reason smaller binaries are transferred first.
   # The copy operation seems to continue even after the SSH socket is terminated (at least when using tftp).
-  # As a workaround you can run the playbook with -t osVerify, sshTimeout to do a verification on the operating system later and reset your SSH timeout
+  # As a workaround you can run the playbook with -t asdmVerify, sshTimeout to do a verification on the operating system later and reset your SSH timeout
 
   vars:
           playbook_debug_level: 0

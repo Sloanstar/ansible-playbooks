@@ -1,5 +1,5 @@
 ---
-- name: ASA Configure Boot OS Image
+- name: ASA OS Deployment / Configuration
   hosts: ASA
   gather_facts: no
   connection: network_cli
@@ -12,14 +12,33 @@
   # Known Issue:
   # Due to ASA SSH timeout configuration limitations I am unable to stay connected to the ASA for a period of longer than 60 mins.
   # If the ASA copy operation takes longer than 60 mins, the socket will be forcibly closed by the remote (ASA) side.
-  # For this reason smaller binaries are transferred first.
   # The copy operation seems to continue even after the SSH socket is terminated (at least when using tftp).
   # As a workaround you can run the playbook with -t osVerify, sshTimeout to do a verification on the operating system later and reset your SSH timeout
 
   vars:
           playbook_debug_level: 0
+          asaOsCopy: "{{ OsCopy | default(false) | bool }}"
+          asaOsClean: "{{ OsClean | default(true) | bool }}"
 
   tasks:
+
+  - name: Set Maximum SSH timeout
+    asa_config:
+      lines:
+        - ssh timeout 60
+    register: _sshTimeoutRemove
+    vars:
+      ansible_command_timeout: 180
+    tags: sshTimeout
+
+  - name: Debug SSH Timeout Removal
+    debug:
+      var: _sshTimeoutRemove
+    when: >
+      (playbook_debug_level > 0) or
+      (_sshTimeoutRemove is failed)
+    tags: sshTimeout
+
   - name: Switch to [SYSTEM] context
     asa_command:
       commands:
@@ -30,95 +49,269 @@
     when: asaMulticontext == "true"
     tags: always
 
-############### RECORD CURRENT BOOT ###############
-  - name: Get Current Boot Variable
+############### RECORD CURRENT OS ###############
+  - name: Get OS Setting
     asa_command:
       commands:
         - show run boot system
-    register: _asaOsShow
-    tags: asaOsFact
+    register: _osShow
+    tags: osFact
 
-  - name: Debug Boot Show
+  - name: Gather Image Filenames
+    set_fact:
+      asaOsCurrentConfig: "{{ asaOsCurrentConfig|default([]) + [item.split('/'')[-1]] }}"
+    with_items:
+      - "{{ __osShow.stdout_lines[0] }}"
+
+  - name: Debug OS Show
     debug:
-      var: _asaOShow
+      var: _osShow
       verbosity: 2
-    when: _asaOsShow is failed
-    tags: asaOsFact
+    when: _osShow is failed
+    tags: osFact
 ###################################################
 
-############### SHOW CURRENT OS ###################
-  - name: Set Fact - Boot Image
+############### SHOW CURRENT OS #################
+  - name: Set Fact - OS Image
     set_fact:
-      asaCurrentOs: "{{ _asaOsShow.stdout[0].split('/')[-1]|trim }}"
-    tags: asaOsFact
+      asaCurrentOs: "{{ asaOsCurrentConfig[0] }}"
+    tags: osFact
 
-  - name: Display current BOOT OS Version
+  - name: Display current OS Version
     debug:
       var: asaCurrentOs
     when: asaCurrentOs != ""
-    tags: asaOsFact
+    tags: osFact
 ###################################################
 
-############### IMAGE VERIFY ###############
-  - name: Run Verify for new image - verify disk0:/{{ asaOsImage }}
+############### IMAGE EXISTS ######################
+  - name: List Directory for Image Name
     asa_command:
       commands:
-        - verify disk0:/{{ asaOsImage }}
-    register: _asaOsVerify
-    failed_when: "'error' in _asaOsVerify.stdout[0]|lower"
-    tags: asaOsVerify
+        - dir disk0:/{{ asaOsImage }}
+    register: _asaOsDir
+    tags: osFact
 
-  - name: Debug Failed verify
-    debug:
-      var: _asaOsVerify
-      verbosity: 2
-    when: >
-      (playbook_debug_level > 3) or
-      (_asaOsVerify is failed)
-    tags: asaOsVerify
-
-  - name: Gather Checksums
+  - name: Set asaOsExists to true
     set_fact:
-      asaOsEmbedded: "{{ _asaOsVerify.stdout_lines[0][2].split(':')[1]|trim }}"
-      asaOsCalculated: "{{ _asaOsVerify.stdout_lines[0][3].split(':')[1]|trim }}"
-    register: _setChecksum
-    failed_when: >
-      (asaOsEmbedded == "") or
-      (asaOsCalculated == "") or
-      (asaOsEmbedded != asaOsCalculated)
-    tags: asaOsVerify
+      asaOsExists: true
+    when:
+      - asaOsImage in _asaOsDir.stdout[0]
+      - "'error' not in _asaOsDir.stdout[0]|lower"
+    tags: osFact
 
-  - name: Log Passed Checksum
-    debug:
-      msg: "\nFile checksum OK!\n{{ asaOsCalculated }}\n"
-    when: _setChecksum is success
-    tags: asaOsVerify
-
-  - name: Log Failed Checksum
-    debug:
-      msg: "\nasaOsEmbedded: {{ asaOsEmbedded }}\nasaOsCalculated: {{ asaOsCalculated }}\n"
-    when: _setChecksum is failed
-    tags: asaOsVerify
-############# END IMAGE VERIFY ###############
-    
-############### SET NEW BOOT IMAGE ####################
-  - name: Set BOOT OS Image - boot system disk0:/{{ asaOsImage }}
-    asa_config:
-      lines:
-        - clear configure boot system
-        - boot system disk0:/{{ asaOsImage }}
-    register: _asaOsConfig
-    when: _setChecksum is success
-    failed_when: _setChecksum is failed
-    tags: asaOsConfig
-
-  - name: Debug Failed verify
-    debug:
-      var: _asaOsConfig
+  - name: Set asaOsExists to false
+    set_fact:
+      asaOsExists: false
     when: >
-      (playbook_debug_level > 3) or
-      (_asaOsConfig is failed)
-    tags: asaOsConfig
+      (asaOsImage not in _asaOsDir.stdout[0]) or
+      ('error' in _asaOsDir.stdout[0]|lower)
+    tags: osFact
+
+  - name: asaOsExists Value
+    debug:
+      var: asaOsExists
+      verbosity: 3
+    tags: osFact
+
+  - name: asaOsCopy Value
+    debug:
+      var: asaOsCopy
+      verbosity: 3
+    tags: OsFact
+###################################################
+
+
+############### OS COPY OPERATION ###############
+  - name: OS Copy Block
+    block:
+      - name: Copy OS Image to Disk - "copy /noconfirm {{ asaFileTransport }}://{{ asaFileHost }}/{{ asaOsImage }} disk0:/{{ asaOsImage }}"
+        asa_command:
+          commands:
+            - copy /noconfirm {{ asaFileTransport }}://{{ asaFileHost }}/{{ asaOsImage }} disk0:/{{ asaOsImage }}
+          wait_for:
+            - result[0] contains copied
+        register: _osDeploy
+        vars:
+          ansible_command_timeout: 3605
+        tags: osDeploy
+    
+      - name: Debug OS image deployment when failed
+        debug:
+          var: _osDeploy
+        when: >
+          (playbook_debug_level > 0) or
+          (_osDeploy is failed)
+        tags: osDeploy
+  
+      - name: List Directory for Image Name
+        asa_command:
+          commands:
+            - dir disk0:/{{ asaOsImage }}
+        register: _asaOsDirCopy
+        tags: osFact
+    
+      - name: Set asaOsExists to true
+        set_fact:
+          asaOsExists: true
+        when:
+          - asaOsImage in _asaOsDirCopy.stdout[0]
+          - "'error' not in _asaOsDirCopy.stdout[0]|lower"
+        tags: osFact
+    
+      - name: Set asaOsExists to false
+        set_fact:
+          asaOsExists: false
+        when: >
+          (asaOsImage not in _asaOsDirCopy.stdout[0]) or
+          ('error' in _asaOsDirCopy.stdout[0]|lower)
+        tags: osFact
+    when: 
+      - asaOsExists == false
+      - asaOsCopy == true
+    tags: osDeploy
+############### END OS COPY ###############
+
+  - name: Tasks When OS Image Exists
+    block:
+############### IMAGE VERIFY ###############
+      - name: Check Image / Rescue with Copy
+        block:
+          - name: Run Verify For Image - verify disk0:/{{ asaOsImage }}
+            asa_command:
+              commands:
+                - verify disk0:/{{ asaOsImage }}
+            register: _osVerify
+            failed_when: "'error' in _osVerify.stdout[0]|lower"
+            tags: osVerify
+        rescue:
+          - name: Verify Error Rescue - copy /noconfirm {{ asaFileTransport }}://{{ asaFileHost }}/{{ asaOsImage }} disk0:/{{ asaOsImage }}
+            asa_command:
+              commands:
+                - copy /noconfirm {{ asaFileTransport }}://{{ asaFileHost }}/{{ asaOsImage }} disk0:/{{ asaOsImage }}
+              wait_for:
+                - result[0] contains copied
+            register: _osDeploy
+            vars:
+              ansible_command_timeout: 3605
+            tags: osDeploy
+          # TODO - Re-verify
+        ignore_errors: yes
+    
+      - name: Get Embedded Checksum
+        set_fact:
+          osEmbedded: "{{ item.split(':')[1]|trim }}"
+        when:
+          - "item|trim|lower is search('embedded')"
+        with_items:
+          - "{{ _osVerify.stdout_lines[0] }}"
+        tags: osVerify
+
+      - name: Get Computed Checksum
+        set_fact:
+          osComputed: "{{ item.split(':')[1]|trim }}"
+        register: _setChecksum
+        when: "item|trim|lower is search('computed')"
+        with_items:
+          - "{{ _osVerify.stdout_lines[0] }}"
+        failed_when: >
+          (osEmbedded == "") or
+          (osComputed == "") or
+          (osEmbedded != osComputed)
+        tags: osVerify
+
+      - name: Debug _osVerify.stdout_lines[0]
+        debug:
+          msg: "line: {{ item }}"
+          verbosity: 3
+        with_items:
+          - "{{ _osVerify.stdout_lines[0] }}"
+        tags: osVerify
+   
+      - name: Log Passed Checksum
+        debug:
+          msg: "\nFile checksum OK!\n{{ osComputed }}\n"
+        when: osEmbedded == osComputed
+        tags: osVerify
+    
+      - name: Log Failed Checksum
+        debug:
+          msg: "\naosEmbedded: {{ osEmbedded }}\nosComputed: {{ osComputed }}\n"
+        when: osEmbedded != osComputed
+        tags: osVerify
+####  ######### END IMAGE VERIFY ###############
+      
+####  ########### SET OS IMAGE ####################
+      - name: Clear System Boot Information
+        asa_config:
+          lines:
+            - clear configure boot system
+        register: _clearOsBoot
+        when: osEmbedded == osComputed
+        tags: osConfig
+        
+      - name: Set OS Image - boot system disk0:/{{ asaOsImage }}
+        asa_config:
+          lines:
+            - boot system disk0:/{{ asaOsImage }}
+            # TODO: Add Previous OS Image Here
+        register: _setOsConfig
+        when: osEmbedded == osComputed
+        tags: osConfig
+    
+      - name: Debug Failed verify
+        debug:
+          var: _osConfig
+        when: >
+          (playbook_debug_level > 3) or
+          (_osConfig is failed)
+        tags: osConfig
+
+
+###################### OS Cleanup #####################################
+      - name: Cleanup old OS Image
+        block:
+          - name: List OS Images
+            asa_command:
+              commands:
+                - dir disk0:/asa[0-9]*.bin
+            register: _asaOsInventory
+
+          - name: Gather Image Filenames
+            set_fact:
+              asaOsInventory: "{{ asaOsInventory|default([]) + [item.split()[-1]] }}"
+            when: item.split() | length == 8
+            with_items:
+              - "{{ _asaOsInventory.stdout_lines[0] }}"
+
+          - name: Delete OS Images
+            asa_command:
+              commands:
+                - delete /noconfirm disk0:/{{ item }}
+            when:
+              - item.split()[-1] != asaOsImage
+              - item.split()[-1] != asaOsCurrentConfig[0]
+            with_items:
+              - "{{ asaOsInventory}}"
+        when:
+          - _osConfig is success
+          - asaOsClean == true
+
+#########################################################################
+
+      - name: Save [SYSTEM] Context Configuration
+        asa_command:
+          commands:
+            - copy /noconfirm running-config startup-config
+        vars:
+          ansible_command_timeout: 180
+        when: asaMulticontext == "true"
+        tags: osConfig
+
+###################################################
+
+############### END BLOCK CONDITIONAL #############
+    when: asaOsExists == true
 ###################################################
 
   - name: Switch to [ADMIN] context
@@ -130,3 +323,27 @@
       ansible_command_timeout: 180
     when: asaMulticontext == "true"
     tags: always
+
+  - name: Set SSH Timeout Back to Desired Value ({{ asaSshTimeout }})
+    asa_config:
+      lines:
+        - ssh timeout {{ asaSshTimeout }}
+    register: _sshTimeoutAdd
+    vars:
+      ansible_command_timeout: 180
+    tags: sshTimeout
+
+  - name: Debug setting SSH timeout to {{ asaSshTimeout }} min when failed
+    debug:
+      var: _sshTimeoutAdd
+    when: >
+      (playbook_debug_level > 0) or
+      (_sshTimeoutAdd is failed)
+    tags: sshTimeout
+
+  - name: Save Configuration
+    asa_command:
+      commands:
+        - copy /noconfirm running-config startup-config
+    vars:
+      ansible_command_timeout: 180
