@@ -59,9 +59,9 @@
 
   - name: Gather Image Filenames
     set_fact:
-      asaOsCurrentConfig: "{{ asaOsCurrentConfig|default([]) + [item.split('/'')[-1]] }}"
+      asaOsCurrentConfig: "{{ asaOsCurrentConfig|default([]) + [item.split('/')[-1]] }}"
     with_items:
-      - "{{ __osShow.stdout_lines[0] }}"
+      - "{{ _osShow.stdout_lines[0] }}"
 
   - name: Debug OS Show
     debug:
