@@ -207,7 +207,7 @@
 
       - name: Check for Signature Verified
         set_fact:
-          asaOsVerified: true|bool
+          asaOsVerified: true
         when:
           - "'signature verified' in _osVerify.stdout[0]|lower"
         tags: osVerify
@@ -260,7 +260,7 @@
 
           - name: Set ASA OS Verified
             set_fact:
-              asaOsVerified: true|bool
+              asaOsVerified: true
             when: osEmbedded == osComputed
         when:
           - asaOsVerified == false
@@ -279,17 +279,17 @@
         asa_config:
           lines:
             - boot system disk0:/{{ asaOsImage }}
-            # TODO: Add Previous OS Image Here
+            - boot system disk0:/{{asaOsCurrentConfig[0]}}
         register: _setOsConfig
         when: asaOsVerified == true
         tags: osConfig
     
       - name: Debug Failed verify
         debug:
-          var: _osConfig
+          var: _setOsConfig
         when: >
           (playbook_debug_level > 3) or
-          (_osConfig is failed)
+          (_setOsConfig is failed)
         tags: osConfig
 
 
@@ -299,13 +299,14 @@
           - name: List OS Images
             asa_command:
               commands:
-                - dir disk0:/asa[0-9]*.bin
+                - dir disk0:/asa[0-9]*
             register: _asaOsInventory
 
           - name: Gather Image Filenames
             set_fact:
               asaOsInventory: "{{ asaOsInventory|default([]) + [item.split()[-1]] }}"
-            when: item.split() | length == 8
+            when:
+              item.split() | length == 8
             with_items:
               - "{{ _asaOsInventory.stdout_lines[0] }}"
 
@@ -314,12 +315,12 @@
               commands:
                 - delete /noconfirm disk0:/{{ item }}
             when:
-              - item.split()[-1] != asaOsImage
-              - item.split()[-1] != asaOsCurrentConfig[0]
+              - item != asaOsImage
+              - item != asaOsCurrentConfig[0]
             with_items:
               - "{{ asaOsInventory}}"
         when:
-          - _osConfig is success
+          - _setOsConfig is success
           - asaOsClean == true
 
 #########################################################################
