@@ -17,6 +17,7 @@
 
   vars:
           playbook_debug_level: 0
+          asaOsVerified: false | bool
           asaOsCopy: "{{ OsCopy | default(false) | bool }}"
           asaOsClean: "{{ OsClean | default(true) | bool }}"
 
@@ -197,48 +198,72 @@
             tags: osDeploy
           # TODO - Re-verify
         ignore_errors: yes
-    
-      - name: Get Embedded Checksum
+
+      
+      # TODO - ASA will ouput variable text on signature validation.
+      # Sometimes just "Signature verified"
+      # Other versions will display an embedded and computed hash.
+      # Write a block that looks for signature verified, if not it goes deeper into checksums.
+
+      - name: Check for Signature Verified
         set_fact:
-          osEmbedded: "{{ item.split(':')[1]|trim }}"
+          asaOsVerified: true|bool
         when:
-          - "item|trim|lower is search('embedded')"
-        with_items:
-          - "{{ _osVerify.stdout_lines[0] }}"
+          - "'signature verified' in _osVerify.stdout[0]|lower"
         tags: osVerify
 
-      - name: Get Computed Checksum
-        set_fact:
-          osComputed: "{{ item.split(':')[1]|trim }}"
-        register: _setChecksum
-        when: "item|trim|lower is search('computed')"
-        with_items:
-          - "{{ _osVerify.stdout_lines[0] }}"
-        failed_when: >
-          (osEmbedded == "") or
-          (osComputed == "") or
-          (osEmbedded != osComputed)
-        tags: osVerify
 
-      - name: Debug _osVerify.stdout_lines[0]
-        debug:
-          msg: "line: {{ item }}"
-          verbosity: 3
-        with_items:
-          - "{{ _osVerify.stdout_lines[0] }}"
-        tags: osVerify
-   
-      - name: Log Passed Checksum
-        debug:
-          msg: "\nFile checksum OK!\n{{ osComputed }}\n"
-        when: osEmbedded == osComputed
-        tags: osVerify
+      - name: Checksum Validation Block
+        block:
+
+          - name: Get Embedded Checksum
+            set_fact:
+              osEmbedded: "{{ item.split(':')[1]|trim }}"
+            when:
+              - "item|trim|lower is search('embedded')"
+            with_items:
+              - "{{ _osVerify.stdout_lines[0] }}"
+            tags: osVerify
     
-      - name: Log Failed Checksum
-        debug:
-          msg: "\naosEmbedded: {{ osEmbedded }}\nosComputed: {{ osComputed }}\n"
-        when: osEmbedded != osComputed
-        tags: osVerify
+          - name: Get Computed Checksum
+            set_fact:
+              osComputed: "{{ item.split(':')[1]|trim }}"
+            register: _setChecksum
+            when: "item|trim|lower is search('computed')"
+            with_items:
+              - "{{ _osVerify.stdout_lines[0] }}"
+            failed_when: >
+              (osEmbedded == "") or
+              (osComputed == "") or
+              (osEmbedded != osComputed)
+            tags: osVerify
+    
+          - name: Debug _osVerify.stdout_lines[0]
+            debug:
+              msg: "line: {{ item }}"
+              verbosity: 3
+            with_items:
+              - "{{ _osVerify.stdout_lines[0] }}"
+            tags: osVerify
+       
+          - name: Log Passed Checksum
+            debug:
+              msg: "\nFile checksum OK!\n{{ osComputed }}\n"
+            when: osEmbedded == osComputed
+            tags: osVerify
+        
+          - name: Log Failed Checksum
+            debug:
+              msg: "\naosEmbedded: {{ osEmbedded }}\nosComputed: {{ osComputed }}\n"
+            when: osEmbedded != osComputed
+            tags: osVerify
+
+          - name: Set ASA OS Verified
+            set_fact:
+              asaOsVerified: true|bool
+            when: osEmbedded == osComputed
+        when:
+          - asaOsVerified == false
 ####  ######### END IMAGE VERIFY ###############
       
 ####  ########### SET OS IMAGE ####################
@@ -247,7 +272,7 @@
           lines:
             - clear configure boot system
         register: _clearOsBoot
-        when: osEmbedded == osComputed
+        when: asaOsVerified == true
         tags: osConfig
         
       - name: Set OS Image - boot system disk0:/{{ asaOsImage }}
@@ -256,7 +281,7 @@
             - boot system disk0:/{{ asaOsImage }}
             # TODO: Add Previous OS Image Here
         register: _setOsConfig
-        when: osEmbedded == osComputed
+        when: asaOsVerified == true
         tags: osConfig
     
       - name: Debug Failed verify
