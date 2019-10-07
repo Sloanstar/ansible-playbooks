@@ -18,6 +18,9 @@
 
   vars:
           playbook_debug_level: 0
+          asaRestVerified: false | bool
+          asaAsdmVerified: false | bool
+          asaOsVerified: false | bool
 
   tasks:
   - name: Set Maximum SSH timeout
@@ -257,7 +260,7 @@
     ############### END ASDM IMAGE VERIFY ###############
     when: >
       (asaAsdmExists == false) or
-      (asaAsdmVeried == false)
+      (asaAsdmVerified == false)
 
 # TODO: Check if file exists
 # TODO: If File exists, verify.
