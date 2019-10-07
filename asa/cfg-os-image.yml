@@ -267,38 +267,38 @@
 ####  ######### END IMAGE VERIFY ###############
       
 ####  ########### SET OS IMAGE ####################
-      - name: Clear System Boot Information
-        asa_config:
-          lines:
-            - clear configure boot system
-        register: _clearOsBoot
-        when: asaOsVerified == true
-        tags: osConfig
+      - name: Configure OS & Secondary OS (Mindful of Repeat Runs)
+        block:
+          - name: Clear System Boot Information
+            asa_config:
+              lines:
+                - clear configure boot system
+            register: _clearOsBoot
+            tags: osConfig
+            
+          - name: Set OS Image - boot system disk0:/{{ asaOsImage }}
+            asa_config:
+              lines:
+                - boot system disk0:/{{ asaOsImage }}
+            register: _setOsConfig
+            tags: osConfig
+    
+          - name: Set secondary boot image
+            asa_config:
+              lines:
+                - boot system disk0:/{{ asaOsCurrentConfig[0] }}
+            register: _setOsSecondary
         
-      - name: Set OS Image - boot system disk0:/{{ asaOsImage }}
-        asa_config:
-          lines:
-            - boot system disk0:/{{ asaOsImage }}
-        register: _setOsConfig
-        when: asaOsVerified == true
-        tags: osConfig
-
-      - name: Set secondary boot image
-        asa_config:
-          lines:
-            - boot system disk0:/{{ asaOsCurrentConfig[0] }}
-        register: _setOsSecondary
+          - name: Debug Failed verify
+            debug:
+              var: _setOsConfig
+            when: >
+              (playbook_debug_level > 3) or
+              (_setOsConfig is failed)
+            tags: osConfig
         when:
           - asaOsVerified == true
-          - asaOsImage != asaOsCurrentConfig[0]
-    
-      - name: Debug Failed verify
-        debug:
-          var: _setOsConfig
-        when: >
-          (playbook_debug_level > 3) or
-          (_setOsConfig is failed)
-        tags: osConfig
+          - asaOsCurrentConfig[0] != asaOsImage
 
 
 ###################### OS Cleanup #####################################
