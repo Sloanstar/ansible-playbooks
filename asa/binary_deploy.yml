@@ -50,6 +50,7 @@
     when: asaMulticontext == "true"
     tags: always
 
+# TODO: Build Smart Deploy for REST.
 # TODO: Check if file exists
 # TODO: If File exists, verify.
 # TODO: If File Doesn't Exist or Verify Failed, transfer file
@@ -80,17 +81,14 @@
 #
 
 
-# TODO: Check if file exists
-# TODO: If File exists, verify.
-# TODO: If File Doesn't Exist or Verify Failed, transfer file
-
+# SMART Deploy (Copy if file doesn't exist or fails verify)
 ############### IMAGE EXISTS ######################
   - name: List Directory for Image Name
     asa_command:
       commands:
         - dir disk0:/{{ asaAsdmImage }}
     register: _asaAsdmDir
-    tags: asaAsdmDeploy
+    tags: asdmDeploy
 
   - name: Set asaAsdmExists to true
     set_fact:
@@ -98,7 +96,7 @@
     when:
       - asaAsdmImage in _asaAsdmDir.stdout[0]
       - "'error' not in _asaAsdmDir.stdout[0]|lower"
-    tags: asaAsdmDeploy
+    tags: asdmDeploy
 
   - name: Set asaAsdmExists to false
     set_fact:
@@ -106,13 +104,13 @@
     when: >
       (asaAsdmImage not in _asaAsdmDir.stdout[0]) or
       ('error' in _asaAsdmDir.stdout[0]|lower)
-    tags: asaAsdmDeploy
+    tags: asdmDeploy
 
   - name: asaAsdmExists Value
     debug:
       var: asaAsdmExists
       verbosity: 3
-    tags: asaAsdmDeploy
+    tags: asdmDeploy
 
 
 ###################################################
@@ -125,20 +123,25 @@
             - verify disk0:/{{ asaAsdmImage }}
         register: _asdmVerify
         failed_when: "'error' in _asdmVerify.stdout[0]|lower"
-        tags: asaAsdmDeploy
+        tags: asdmDeploy
       
       # TODO - ASA will ouput variable text on signature validation.
       # Sometimes just "Signature verified"
       # Other versions will display an embedded and computed hash.
       # Write a block that looks for signature verified, if not it goes deeper into checksums.
 
+
+      # Basic Validation - Look for signature verified.
       - name: Check for Signature Verified
         set_fact:
           asaAsdmVerified: true
         when:
           - "'signature verified' in _asdmVerify.stdout[0]|lower"
-        tags: asaAsdmDeploy
+        tags: asdmDeploy
 
+
+
+        # Basic Validation Univailable - Check for and compare embedded checksums.
       - name: Checksum Validation Block
         block:
 
@@ -149,7 +152,7 @@
               - "item|trim|lower is search('embedded')"
             with_items:
               - "{{ _asdmVerify.stdout_lines[0] }}"
-            tags: asaAsdmDeploy
+            tags: asdmDeploy
     
           - name: Get Computed Checksum
             set_fact:
@@ -162,7 +165,7 @@
               (asdmEmbedded == "") or
               (asdmComputed == "") or
               (asdmEmbedded != asdmComputed)
-            tags: asaAsdmDeploy
+            tags: asdmDeploy
     
           - name: Debug _asdmVerify.stdout_lines[0]
             debug:
@@ -170,28 +173,35 @@
               verbosity: 3
             with_items:
               - "{{ _asdmVerify.stdout_lines[0] }}"
-            tags: asaAsdmDeploy
+            tags: asdmDeploy
        
           - name: Log Passed Checksum
             debug:
               msg: "\nFile checksum OK!\n{{ asdmComputed }}\n"
             when: asdmEmbedded == asdmComputed
-            tags: asaAsdmDeploy
+            tags: asdmDeploy
         
           - name: Log Failed Checksum
             debug:
               msg: "\nasdmEmbedded: {{ asdmEmbedded }}\nasdmComputed: {{ asdmComputed }}\n"
             when: asdmEmbedded != Computed
-            tags: asaAsdmDeploy
+            tags: asdmDeploy
 
           - name: Set ASA ASDM Verified
             set_fact:
               asaAsdmVerified: true
             when: asdmEmbedded == asdmComputed
-            tags: asaAsdmDeploy
+            tags: asdmDeploy
         when:
           - asaAsdmVerified == false
-####  ######### END IMAGE VERIFY ###############
+
+
+      # TODO: Build in validation from calculated checksum against stored variable.
+      # TODO: Last ditch effort to verify.
+      # TODO: Will require getting checksums from Cisco Website for images.
+
+
+      ######### END IMAGE VERIFY ###############
     when: asaAsdmExists == true
 
 
@@ -207,7 +217,7 @@
         register: _asdmDeploy
         vars:
           ansible_command_timeout: 3605
-        tags: asaAsdmDeploy
+        tags: asdmDeploy
     
       - name: Debug ASDM image deployment when failed
         debug:
@@ -215,7 +225,7 @@
         when: >
           (playbook_debug_level > 0) or
           (_asdmDeploy is failed)
-        tags: asaAsdmDeploy
+        tags: asdmDeploy
       ############### END ASDM COPY ###############
     
       ############### ASDM IMAGE VERIFY ###############
@@ -225,7 +235,7 @@
             - verify disk0:/{{ asaAsdmImage }}
         register: _asaAsdmVerify
         failed_when: "'error' in _asaAsdmVerify.stdout[0]|lower"
-        tags: asaAsdmDeploy, asaAsdmVerify
+        tags: asdmDeploy, asaAsdmVerify
     
       - name: Debug Failed verify
         debug:
@@ -233,7 +243,7 @@
         when: >
           (playbook_debug_level > 3) or
           (_asaAsdmVerify is failed)
-        tags: asaAsdmDeploy, asaAsdmVerify
+        tags: asdmDeploy, asaAsdmVerify
     
       - name: Gather ASDM Checksums
         set_fact:
@@ -244,89 +254,209 @@
           (asaAsdmEmbedded == "") or
           (asaAsdmCalculated == "") or
           (asaAsdmEmbedded != asaAsdmCalculated)
-        tags: asaAsdmDeploy, asaAsdmVerify
+        tags: asdmDeploy, asaAsdmVerify
     
       - name: Log Passed Checksum
         debug:
           msg: "\nFile checksum OK!\n{{ asaAsdmCalculated }}\n"
         when: _setAsdmChecksum is success
-        tags: asaAsdmDeploy, asaAsdmVerify
+        tags: asdmDeploy, asaAsdmVerify
     
       - name: Log Failed Checksum
         debug:
           msg: "\nasaAsdmEmbedded: {{ asaAsdmEmbedded }}\nasaAsdmCalculated: {{ asaAsdmCalculated }}\n"
         when: _setAsdmChecksum is failed
-        tags: asaAsdmDeploy, asaAsdmVerify
+        tags: asdmDeploy, asaAsdmVerify
     ############### END ASDM IMAGE VERIFY ###############
     when: >
       (asaAsdmExists == false) or
       (asaAsdmVerified == false)
 
-# TODO: Check if file exists
-# TODO: If File exists, verify.
-# TODO: If File Doesn't Exist or Verify Failed, transfer file
+# Build Smart Deploy for OS
+# Check if file exists.
+# If file exists, verify checksum.
+# Copy file if it does not exist or fails checksum.
+############### IMAGE EXISTS ######################
+  - name: List Directory for Image Name
+    asa_command:
+      commands:
+        - dir disk0:/{{ asaOsImage }}
+    register: _asaOsDir
+    tags: osDeploy
+
+  - name: Set asaOsExists to true
+    set_fact:
+      asaOsExists: true
+    when:
+      - asaOsImage in _asaOsDir.stdout[0]
+      - "'error' not in _asaOsDir.stdout[0]|lower"
+    tags: osDeploy
+
+  - name: Set asaOsExists to false
+    set_fact:
+      asaOsExists: false
+    when: >
+      (asaOsImage not in _asaOsDir.stdout[0]) or
+      ('error' in _asaOsDir.stdout[0]|lower)
+    tags: osDeploy
+
+  - name: asaOsExists Value
+    debug:
+      var: asaOsExists
+      verbosity: 3
+    tags: osDeploy
+###################################################
+
+############### IMAGE VERIFY ###############
+  - name: Tasks When OS Image Exists
+    block:
+      - name: Run Verify For Image - verify disk0:/{{ asaOsImage }}
+        asa_command:
+          commands:
+            - verify disk0:/{{ asaOsImage }}
+        register: _osVerify
+        failed_when: "'error' in _osVerify.stdout[0]|lower"
+        tags: osDeploy
+      
+      # TODO - ASA will ouput variable text on signature validation.
+      # Sometimes just "Signature verified"
+      # Other versions will display an embedded and computed hash.
+      # Write a block that looks for signature verified, if not it goes deeper into checksums.
+
+      - name: Check for Signature Verified
+        set_fact:
+          asaOsVerified: true
+        when:
+          - "'signature verified' in _osVerify.stdout[0]|lower"
+        tags: osDeploy
+
+
+      - name: Checksum Validation Block
+        block:
+          - name: Get Embedded Checksum
+            set_fact:
+              osEmbedded: "{{ item.split(':')[1]|trim }}"
+            when:
+              - "item|trim|lower is search('embedded')"
+            with_items:
+              - "{{ _osVerify.stdout_lines[0] }}"
+            tags: osDeploy
+    
+          - name: Get Computed Checksum
+            set_fact:
+              osComputed: "{{ item.split(':')[1]|trim }}"
+            register: _setChecksum
+            when: "item|trim|lower is search('computed')"
+            with_items:
+              - "{{ _osVerify.stdout_lines[0] }}"
+            failed_when: >
+              (osEmbedded == "") or
+              (osComputed == "") or
+              (osEmbedded != osComputed)
+            tags: osDeploy
+    
+          - name: Debug _osVerify.stdout_lines[0]
+            debug:
+              msg: "line: {{ item }}"
+              verbosity: 3
+            with_items:
+              - "{{ _osVerify.stdout_lines[0] }}"
+            tags: osDeploy
+       
+          - name: Log Passed Checksum
+            debug:
+              msg: "\nFile checksum OK!\n{{ osComputed }}\n"
+            when: osEmbedded == osComputed
+            tags: osDeploy
+        
+          - name: Log Failed Checksum
+            debug:
+              msg: "\naosEmbedded: {{ osEmbedded }}\nosComputed: {{ osComputed }}\n"
+            when: osEmbedded != osComputed
+            tags: osDeploy
+
+          - name: Set ASA OS Verified
+            set_fact:
+              asaOsVerified: true
+            when: osEmbedded == osComputed
+            tags: osDeploy
+        ##### END BLOCK CONDITIONAL
+        when:
+          - asaOsVerified == false
+        ####### END IMAGE VERIFY ###############
+    ####### END BLOCK CONDITIONAL #############
+    when: asaOsExists == true
+###################################################
+
+
 
 ############### OS IMAGE COPY OPERATION ###############
-  - name: Copy OS Image to Disk - "copy /noconfirm {{ asaFileTransport }}://{{ asaFileHost }}/{{ asaOsImage }} disk0:/{{ asaOsImage }}"
-    asa_command:
-      commands:
-        - copy /noconfirm {{ asaFileTransport }}://{{ asaFileHost}}/{{ asaOsImage }} disk0:/{{ asaOsImage }}
-      wait_for:
-        - result[0] contains copied
-    register: _osDeploy
-    vars:
-      ansible_command_timeout: 3605
-    tags: osDeploy
-
-  - name: Debug Failed OS Copy
-    debug:
-      var: _osDeploy
+  - name: OS Copy Block
+    block:
+      - name: Copy OS Image to Disk - "copy /noconfirm {{ asaFileTransport }}://{{ asaFileHost }}/{{ asaOsImage }} disk0:/{{ asaOsImage }}"
+        asa_command:
+          commands:
+            - copy /noconfirm {{ asaFileTransport }}://{{ asaFileHost}}/{{ asaOsImage }} disk0:/{{ asaOsImage }}
+          wait_for:
+            - result[0] contains copied
+        register: _osDeploy
+        vars:
+          ansible_command_timeout: 3605
+        tags: osDeploy
+    
+      - name: Debug Failed OS Copy
+        debug:
+          var: _osDeploy
+        when: >
+          (playbook_debug_level > 0) or
+          (_osDeploy is failed)
+        tags: osDeploy
+      ############### END OS IMAGE COPY ###############
+    
+      ############### OS IMAGE VERIFY ###############
+      - name: Run Verify For Image - verify disk0:/{{ asaOsImage }}
+        asa_command:
+          commands:
+            - verify disk0:/{{ asaOsImage }}
+        register: _osVerify
+        failed_when: "'error' in _osVerify.stdout[0]|lower"
+        tags: osDeploy, osVerify
+    
+      - name: Debug Failed verify
+        debug:
+          var: _osVerify
+        when: >
+          (playbook_debug_level > 3) or
+          (_osVerify is failed)
+        tags: osDeploy, osVerify
+    
+      - name: Gather Checksums
+        set_fact:
+          osEmbedded: "{{ _osVerify.stdout_lines[0][2].split(':')[1]|trim }}"
+          osCalculated: "{{ _osVerify.stdout_lines[0][3].split(':')[1]|trim }}"
+        register: _setChecksum
+        failed_when: >
+          (osEmbedded == "") or
+          (osCalculated == "") or
+          (osEmbedded != osCalculated)
+        tags: osDeploy, osVerify
+    
+      - name: Log Passed Checksum
+        debug:
+          msg: "\nFile checksum OK!\n{{ osCalculated }}\n"
+        when: _setChecksum is success
+        tags: osDeploy, osVerify
+    
+      - name: Log Failed Checksum
+        debug:
+          msg: "\nosEmbedded: {{ osEmbedded }}\nosCalculated: {{ osCalculated }}\n"
+        when: _setChecksum is failed
+        tags: osDeploy, osVerify
+      ############### END OS IMAGE VERIFY ###############
+    ############### END OF COPY BLOCK ###############
     when: >
-      (playbook_debug_level > 0) or
-      (_osDeploy is failed)
-    tags: osDeploy
-############### END OS IMAGE COPY ###############
-
-############### OS IMAGE VERIFY ###############
-  - name: Run Verify For Image - verify disk0:/{{ asaOsImage }}
-    asa_command:
-      commands:
-        - verify disk0:/{{ asaOsImage }}
-    register: _osVerify
-    failed_when: "'error' in _osVerify.stdout[0]|lower"
-    tags: osDeploy, osVerify
-
-  - name: Debug Failed verify
-    debug:
-      var: _osVerify
-    when: >
-      (playbook_debug_level > 3) or
-      (_osVerify is failed)
-    tags: osDeploy, osVerify
-
-  - name: Gather Checksums
-    set_fact:
-      osEmbedded: "{{ _osVerify.stdout_lines[0][2].split(':')[1]|trim }}"
-      osCalculated: "{{ _osVerify.stdout_lines[0][3].split(':')[1]|trim }}"
-    register: _setChecksum
-    failed_when: >
-      (osEmbedded == "") or
-      (osCalculated == "") or
-      (osEmbedded != osCalculated)
-    tags: osDeploy, osVerify
-
-  - name: Log Passed Checksum
-    debug:
-      msg: "\nFile checksum OK!\n{{ osCalculated }}\n"
-    when: _setChecksum is success
-    tags: osDeploy, osVerify
-
-  - name: Log Failed Checksum
-    debug:
-      msg: "\nosEmbedded: {{ osEmbedded }}\nosCalculated: {{ osCalculated }}\n"
-    when: _setChecksum is failed
-    tags: osDeploy, osVerify
-############### END OS IMAGE VERIFY ###############
+      (asaOsExists == false) or
+      (asaOsVerified == false)
 
   - name: Switch to [ADMIN] context
     asa_command:
