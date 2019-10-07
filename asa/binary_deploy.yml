@@ -397,8 +397,9 @@
         asa_command:
           commands:
             - copy /noconfirm {{ asaFileTransport }}://{{ asaFileHost}}/{{ asaOsImage }} disk0:/{{ asaOsImage }}
-          wait_for:
-            - result[0] contains copied
+          wait_for: >
+            (result[0]|lower contains copied) or
+            (result[0]|lower contains done)
         register: _osDeploy
         vars:
           ansible_command_timeout: 3605
