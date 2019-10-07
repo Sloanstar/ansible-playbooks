@@ -17,6 +17,7 @@
 
   vars:
           playbook_debug_level: 0
+          asaAsdmVerified: true | bool
           asaAsdmCopy: "{{ AsdmCopy | default(false) | bool }}"
           asaAsdmClean: "{{ AsdmClean | default(true) | bool }}"
 
@@ -55,6 +56,8 @@
       commands:
         - show asdm image
     register: _asdmShow
+    vars:
+      ansible_command_timeout: 180
     tags: asdmFact
 
   - name: Debug ASDM Show
@@ -84,6 +87,8 @@
       commands:
         - dir disk0:/{{ asaAsdmImage }}
     register: _asaAsdmDir
+    vars:
+      ansible_command_timeout: 180
     tags: asdmFact
 
   - name: Set asaAsdmExists to true
@@ -143,6 +148,8 @@
           commands:
             - dir disk0:/{{ asaAsdmImage }}
         register: _asaAsdmDirCopy
+        vars:
+          ansible_command_timeout: 180
         tags: asdmFact
     
       - name: Set asaAsdmExists to true
@@ -169,69 +176,76 @@
   - name: Tasks When ASDM Image Exists
     block:
 ############### IMAGE VERIFY ###############
-      - name: Check Image / Rescue with Copy
+      - name: Run Verify For Image - verify disk0:/{{ asaAsdmImage }}
+        asa_command:
+          commands:
+            - verify disk0:/{{ asaAsdmImage }}
+        register: _asdmVerify
+        vars:
+          ansible_command_timeout: 180
+        failed_when: "'error' in _asdmVerify.stdout[0]|lower"
+        tags: asdmVerify
+
+      # Basic Validation - Look for signature verified.
+      - name: Check for Signature Verified
+        set_fact:
+          asaAsdmVerified: true
+        when: >
+          ("'signature verified' in _asdmVerify.stdout[0]|lower") or
+          ("'signature successfully validated' in _asdmVerify.stdout[0]|lower")
+        tags: asdmDeploy
+
+      # Basic Validation Univailable - Check for and compare embedded checksums.
+      - name: Checksum Validation Block
         block:
-          - name: Run Verify For Image - verify disk0:/{{ asaAsdmImage }}
-            asa_command:
-              commands:
-                - verify disk0:/{{ asaAsdmImage }}
-            register: _asdmVerify
-            failed_when: "'error' in _asdmVerify.stdout[0]|lower"
+          - name: Get Embedded Checksum
+            set_fact:
+              asdmEmbedded: "{{ item.split(':')[1]|trim }}"
+            when:
+              - "item|trim|lower is search('embedded')"
+            with_items:
+              - "{{ _asdmVerify.stdout_lines[0] }}"
             tags: asdmVerify
-        rescue:
-          - name: Verify Error Rescue - copy /noconfirm {{ asaFileTransport }}://{{ asaFileHost }}/{{ asaAsdmImage }} disk0:/{{ asaAsdmImage }}
-            asa_command:
-              commands:
-                - copy /noconfirm {{ asaFileTransport }}://{{ asaFileHost }}/{{ asaAsdmImage }} disk0:/{{ asaAsdmImage }}
-              wait_for:
-                - result[0] contains copied
-            register: _asdmDeploy
-            vars:
-              ansible_command_timeout: 3605
+    
+          - name: Get Computed Checksum
+            set_fact:
+              asdmComputed: "{{ item.split(':')[1]|trim }}"
+            when: "item|trim|lower is search('computed')"
+            with_items:
+              - "{{ _asdmVerify.stdout_lines[0] }}"
+            failed_when: >
+              (asdmEmbedded == "") or
+              (asdmComputed == "") or
+              (asdmEmbedded != asdmComputed)
+            tags: asdmVerify
+    
+          - name: Debug _asdmVerify.stdout_lines[0]
+            debug:
+              msg: "line: {{ item }}"
+              verbosity: 3
+            with_items:
+              - "{{ _asdmVerify.stdout_lines[0] }}"
+            tags: asdmVerify
+       
+          - name: Log Passed Checksum
+            debug:
+              msg: "\nFile checksum OK!\n{{ asdmComputed }}\n"
+            when: asdmEmbedded == asdmComputed
+            tags: asdmVerify
+        
+          - name: Log Failed Checksum
+            debug:
+              msg: "\nasdmEmbedded: {{ asdmEmbedded }}\nasdmComputed: {{ asdmComputed }}\n"
+            when: asdmEmbedded != asdmComputed
+            tags: asdmVerify
+          
+          - name: Set ASA ASDM Verified
+            set_fact:
+              asaAsdmVerified: true
+            when: asdmEmbedded == asdmComputed
             tags: asdmDeploy
-          # TODO - Re-verify
-        ignore_errors: yes
-    
-      - name: Get Embedded Checksum
-        set_fact:
-          asdmEmbedded: "{{ item.split(':')[1]|trim }}"
         when:
-          - "item|trim|lower is search('embedded')"
-        with_items:
-          - "{{ _asdmVerify.stdout_lines[0] }}"
-        tags: asdmVerify
-
-      - name: Get Computed Checksum
-        set_fact:
-          asdmComputed: "{{ item.split(':')[1]|trim }}"
-        when: "item|trim|lower is search('computed')"
-        with_items:
-          - "{{ _asdmVerify.stdout_lines[0] }}"
-        failed_when: >
-          (asdmEmbedded == "") or
-          (asdmComputed == "") or
-          (asdmEmbedded != asdmComputed)
-        tags: asdmVerify
-
-      - name: Debug _asdmVerify.stdout_lines[0]
-        debug:
-          msg: "line: {{ item }}"
-          verbosity: 3
-        with_items:
-          - "{{ _asdmVerify.stdout_lines[0] }}"
-        tags: asdmVerify
-   
-      - name: Log Passed Checksum
-        debug:
-          msg: "\nFile checksum OK!\n{{ asdmComputed }}\n"
-        when: asdmEmbedded == asdmComputed
-        tags: asdmVerify
-    
-      - name: Log Failed Checksum
-        debug:
-          msg: "\nasdmEmbedded: {{ asdmEmbedded }}\nasdmComputed: {{ asdmComputed }}\n"
-        when: asdmEmbedded != asdmComputed
-        tags: asdmVerify
+          - asaAsdmVerified == false
 ####  ######### END IMAGE VERIFY ###############
       
 ####  ########### SET ASDM IMAGE ####################
@@ -240,7 +254,7 @@
           lines:
             - asdm image disk0:/{{ asaAsdmImage }}
         register: _asdmConfig
-        when: asdmEmbedded == asdmComputed
+        when: asaAsdmVerified == true
         failed_when: _asdmConfig is failed
         tags: asdmConfig
     
