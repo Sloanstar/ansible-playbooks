@@ -228,45 +228,74 @@
         tags: asdmDeploy
       ############### END ASDM COPY ###############
     
-      ############### ASDM IMAGE VERIFY ###############
-      - name: Run Verify For Image - verify disk0:/{{ asaAsdmImage }}
-        asa_command:
-          commands:
-            - verify disk0:/{{ asaAsdmImage }}
-        register: _asaAsdmVerify
-        failed_when: "'error' in _asaAsdmVerify.stdout[0]|lower"
-        tags: asdmDeploy, asaAsdmVerify
-    
-      - name: Debug Failed verify
-        debug:
-          var: _asaAsdmVerify
-        when: >
-          (playbook_debug_level > 3) or
-          (_asaAsdmVerify is failed)
-        tags: asdmDeploy, asaAsdmVerify
-    
-      - name: Gather ASDM Checksums
+     # Basic Validation - Look for signature verified.
+      - name: Check for Signature Verified
         set_fact:
-          asaAsdmEmbedded: "{{ _asaAsdmVerify.stdout_lines[0][2].split(':')[1]|trim }}"
-          asaAsdmCalculated: "{{ _asaAsdmVerify.stdout_lines[0][3].split(':')[1]|trim }}"
-        register: _setAsdmChecksum
-        failed_when: >
-          (asaAsdmEmbedded == "") or
-          (asaAsdmCalculated == "") or
-          (asaAsdmEmbedded != asaAsdmCalculated)
-        tags: asdmDeploy, asaAsdmVerify
+          asaAsdmVerified: true
+        when:
+          - "'signature verified' in _asdmVerify.stdout[0]|lower"
+        tags: asdmDeploy
+
+
+
+        # Basic Validation Univailable - Check for and compare embedded checksums.
+      - name: Checksum Validation Block
+        block:
+
+          - name: Get Embedded Checksum
+            set_fact:
+              asdmEmbedded: "{{ item.split(':')[1]|trim }}"
+            when:
+              - "item|trim|lower is search('embedded')"
+            with_items:
+              - "{{ _asdmVerify.stdout_lines[0] }}"
+            tags: asdmDeploy
     
-      - name: Log Passed Checksum
-        debug:
-          msg: "\nFile checksum OK!\n{{ asaAsdmCalculated }}\n"
-        when: _setAsdmChecksum is success
-        tags: asdmDeploy, asaAsdmVerify
+          - name: Get Computed Checksum
+            set_fact:
+              asdmComputed: "{{ item.split(':')[1]|trim }}"
+            register: _setChecksum
+            when: "item|trim|lower is search('computed')"
+            with_items:
+              - "{{ _asdmVerify.stdout_lines[0] }}"
+            failed_when: >
+              (asdmEmbedded == "") or
+              (asdmComputed == "") or
+              (asdmEmbedded != asdmComputed)
+            tags: asdmDeploy
     
-      - name: Log Failed Checksum
-        debug:
-          msg: "\nasaAsdmEmbedded: {{ asaAsdmEmbedded }}\nasaAsdmCalculated: {{ asaAsdmCalculated }}\n"
-        when: _setAsdmChecksum is failed
-        tags: asdmDeploy, asaAsdmVerify
+          - name: Debug _asdmVerify.stdout_lines[0]
+            debug:
+              msg: "line: {{ item }}"
+              verbosity: 3
+            with_items:
+              - "{{ _asdmVerify.stdout_lines[0] }}"
+            tags: asdmDeploy
+       
+          - name: Log Passed Checksum
+            debug:
+              msg: "\nFile checksum OK!\n{{ asdmComputed }}\n"
+            when: asdmEmbedded == asdmComputed
+            tags: asdmDeploy
+        
+          - name: Log Failed Checksum
+            debug:
+              msg: "\nasdmEmbedded: {{ asdmEmbedded }}\nasdmComputed: {{ asdmComputed }}\n"
+            when: asdmEmbedded != Computed
+            tags: asdmDeploy
+
+          - name: Set ASA ASDM Verified
+            set_fact:
+              asaAsdmVerified: true
+            when: asdmEmbedded == asdmComputed
+            tags: asdmDeploy
+        when:
+          - asaAsdmVerified == false
+
+      # TODO: Build in validation from calculated checksum against stored variable.
+      # TODO: Last ditch effort to verify.
+      # TODO: Will require getting checksums from Cisco Website for images.
+
     ############### END ASDM IMAGE VERIFY ###############
     when: >
       (asaAsdmExists == false) or
