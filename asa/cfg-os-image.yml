@@ -279,10 +279,18 @@
         asa_config:
           lines:
             - boot system disk0:/{{ asaOsImage }}
-            - boot system disk0:/{{asaOsCurrentConfig[0]}}
         register: _setOsConfig
         when: asaOsVerified == true
         tags: osConfig
+
+      - name: Set secondary boot image
+        asa_config:
+          lines:
+            - boot system disk0:/{{ asaOsCurrentConfig[0] }}
+        register: _setOsSecondary
+        when:
+          - asaOsVerified == true
+          - asaOsImage != asaOsCurrentConfig[0]
     
       - name: Debug Failed verify
         debug:
@@ -310,15 +318,28 @@
             with_items:
               - "{{ _asaOsInventory.stdout_lines[0] }}"
 
+          - name: Get OS Setting
+            asa_command:
+              commands:
+                - show run boot system
+            register: _osUpdated
+            tags: osFact
+
+          - name: Gather Image Filenames
+            set_fact:
+              asaOsUpdatedConfig: "{{ asaOsUpdatedConfig|default([]) + [item.split('/')[-1]] }}"
+            with_items:
+              - "{{ _osUpdated.stdout_lines[0] }}"
+
           - name: Delete OS Images
             asa_command:
               commands:
                 - delete /noconfirm disk0:/{{ item }}
             when:
-              - item != asaOsImage
-              - item != asaOsCurrentConfig[0]
+              - item not in asaOsUpdatedConfig
             with_items:
               - "{{ asaOsInventory}}"
+
         when:
           - _setOsConfig is success
           - asaOsClean == true
