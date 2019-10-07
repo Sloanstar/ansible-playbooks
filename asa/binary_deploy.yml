@@ -135,8 +135,9 @@
       - name: Check for Signature Verified
         set_fact:
           asaAsdmVerified: true
-        when:
-          - "'signature verified' in _asdmVerify.stdout[0]|lower"
+        when: >
+          ("'signature verified' in _asdmVerify.stdout[0]|lower") or
+          ("'signature successfully validated' in _asdmVerify.stdout[0]|lower")
         tags: asdmDeploy
 
 
@@ -232,8 +233,9 @@
       - name: Check for Signature Verified
         set_fact:
           asaAsdmVerified: true
-        when:
-          - "'signature verified' in _asdmVerify.stdout[0]|lower"
+        when: >
+          ("'signature verified' in _asdmVerify.stdout[0]|lower") or
+          ("'signature successfully validated' in _asdmVerify.stdout[0]|lower")
         tags: asdmDeploy
 
 
@@ -355,8 +357,9 @@
       - name: Check for Signature Verified
         set_fact:
           asaOsVerified: true
-        when:
-          - "'signature verified' in _osVerify.stdout[0]|lower"
+        when: >
+          ("'signature verified' in _asdmVerify.stdout[0]|lower") or
+          ("'signature successfully validated' in _asdmVerify.stdout[0]|lower")
         tags: osDeploy
 
 
