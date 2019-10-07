@@ -1,6 +1,6 @@
 ---
 - name: ASA ASDM Deployment / Configuration
-  hosts: ASA
+  hosts: ASA_PRIMARY
   gather_facts: no
   connection: network_cli
 
