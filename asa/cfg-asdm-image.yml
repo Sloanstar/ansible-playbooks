@@ -105,6 +105,9 @@
     when: >
       (asaAsdmImage not in _asaAsdmDir.stdout[0]) or
       ('error' in _asaAsdmDir.stdout[0]|lower)
+    failed_when:
+      - asaAsdmExists == false
+      - asaAsdmCopy == false
     tags: asdmFact
 
   - name: asaAsdmExists Value
@@ -166,6 +169,8 @@
         when: >
           (asaAsdmImage not in _asaAsdmDirCopy.stdout[0]) or
           ('error' in _asaAsdmDirCopy.stdout[0]|lower)
+        failed_when:
+          - asaAsdmExists = false
         tags: asdmFact
     when: 
       - asaAsdmExists == false
