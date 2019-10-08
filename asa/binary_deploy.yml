@@ -430,12 +430,12 @@
         asa_command:
           commands:
             - copy /noconfirm {{ asaFileTransport }}://{{ asaFileHost}}/{{ asaOsImage }} disk0:/{{ asaOsImage }}
+          wait_for: >
+            ( "'copied' in _osDeploy.stdout[0] | lower" ) or
+            ( "'done' in _osDeploy.stdout[0] | lower" )
         register: _osDeploy
         vars:
           ansible_command_timeout: 3605
-        wait_for: >
-            ( "'copied' in _osDeploy.stdout[0] | lower" ) or
-            ( "'done' in _osDeploy.stdout[0] | lower" )
         tags: osDeploy
     
       - name: Debug Failed OS Copy
