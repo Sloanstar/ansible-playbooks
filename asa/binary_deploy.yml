@@ -214,8 +214,8 @@
           commands:
             - copy /noconfirm {{ asaFileTransport }}://{{ asaFileHost }}/{{ asaAsdmImage }} disk0:/{{ asaAsdmImage }}
           wait_for: >
-            ( _asdmDeploy.stdout[0] | lower contains copied) or
-            ( _asdmDeploy.stdout[0] | lower contains done)
+            ( "'copied' in _asdmDeploy.stdout[0] | lower" ) or
+            ( "'done' in _asdmDeploy.stdout[0] | lower" )
         register: _asdmDeploy
         vars:
           ansible_command_timeout: 3605
@@ -329,7 +329,7 @@
       asaOsExists: false
     when: >
       (asaOsImage not in _asaOsDir.stdout[0]) or
-      ('error' in _asaOsDir.stdout[0]|lower)
+      ('error' in _asaOsDir.stdout[0]|lower")
     tags: osDeploy
 
   - name: asaOsExists Value
@@ -433,9 +433,9 @@
         register: _osDeploy
         vars:
           ansible_command_timeout: 3605
-        failed_when: >
-          ( copied not in _osDeploy.stdout[0] | lower ) or
-          ( done not in _osDeploy.stdout[0] | lower )
+        wait_for: >
+            ( "'copied' in _osDeploy.stdout[0] | lower" ) or
+            ( "'done' in _osDeploy.stdout[0] | lower" )
         tags: osDeploy
     
       - name: Debug Failed OS Copy
