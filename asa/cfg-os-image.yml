@@ -349,7 +349,7 @@
             asa_command:
               commands:
                 - delete /noconfirm disk0:/{{ item }}
-                - failover exec mate - delete /noconfirm disk0:/{{ item }}
+                - failover exec mate delete /noconfirm disk0:/{{ item }}
             when:
               - item not in asaOsUpdatedConfig
             vars:
