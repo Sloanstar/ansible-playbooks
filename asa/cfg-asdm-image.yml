@@ -254,8 +254,11 @@
           lines:
             - asdm image disk0:/{{ asaAsdmImage }}
         register: _asdmConfig
-        when: asaAsdmVerified == true
-        failed_when: _asdmConfig is failed
+        when:
+          - asaAsdmVerified == true
+          - asaCurrentAsdm != asaAsdmImage
+        vars:
+          ansible_command_timeout: 180
         tags: asdmConfig
     
       - name: Debug Failed verify
@@ -275,6 +278,8 @@
               commands:
                 - dir disk0:/asdm-[0-9]*.bin
             register: _asaAsdmInventory
+            vars:
+              ansible_command_timeout: 180
 
           - name: Gather Image Filenames
             set_fact:
@@ -287,8 +292,11 @@
             asa_command:
               commands:
                 - delete /noconfirm disk0:/{{ item }}
+                - failover exec mate delete /noconfirm disk0:/{{ item }}
             when:
               - item.split()[-1] != asaAsdmImage
+            vars:
+              ansible_command_timeout: 180
             with_items:
               - "{{ asaAsdmInventory}}"
         when:
