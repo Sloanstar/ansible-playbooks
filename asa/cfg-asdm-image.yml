@@ -180,7 +180,7 @@
 
   - name: Tasks When ASDM Image Exists
     block:
-############### IMAGE VERIFY ###############
+      ############### IMAGE VERIFY ###############
       - name: Run Verify For Image - verify disk0:/{{ asaAsdmImage }}
         asa_command:
           commands:
@@ -251,9 +251,9 @@
             tags: asdmDeploy
         when:
           - asaAsdmVerified == false
-####  ######### END IMAGE VERIFY ###############
+      ################# END IMAGE VERIFY ###############
       
-####  ########### SET ASDM IMAGE ####################
+      ################# SET ASDM IMAGE ####################
       - name: Set ASDM Image - asdm image disk0:/{{ asaAsdmImage }}
         asa_config:
           lines:
@@ -275,7 +275,7 @@
         tags: asdmConfig
 
 
-###################### ASDM Cleanup #####################################
+      ###################### ASDM Cleanup #########################
       - name: Cleanup old ASDM Image
         block:
           - name: List ASDM Images
