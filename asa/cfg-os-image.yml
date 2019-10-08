@@ -91,6 +91,8 @@
       commands:
         - dir disk0:/{{ asaOsImage }}
     register: _asaOsDir
+    vars:
+      ansible_command_timeout: 180
     tags: osFact
 
   - name: Set asaOsExists to true
@@ -107,6 +109,9 @@
     when: >
       (asaOsImage not in _asaOsDir.stdout[0]) or
       ('error' in _asaOsDir.stdout[0]|lower)
+    failed_when:
+      - asaOsExists == false
+      - asaOsCopy == false
     tags: osFact
 
   - name: asaOsExists Value
@@ -150,6 +155,8 @@
           commands:
             - dir disk0:/{{ asaOsImage }}
         register: _asaOsDirCopy
+        vars:
+          ansible_command_timeout: 180
         tags: osFact
     
       - name: Set asaOsExists to true
@@ -166,6 +173,8 @@
         when: >
           (asaOsImage not in _asaOsDirCopy.stdout[0]) or
           ('error' in _asaOsDirCopy.stdout[0]|lower)
+        failed_when:
+          - asaOsExists == false
         tags: osFact
     when: 
       - asaOsExists == false
@@ -175,47 +184,34 @@
 
   - name: Tasks When OS Image Exists
     block:
-############### IMAGE VERIFY ###############
-      - name: Check Image / Rescue with Copy
-        block:
-          - name: Run Verify For Image - verify disk0:/{{ asaOsImage }}
-            asa_command:
-              commands:
-                - verify disk0:/{{ asaOsImage }}
-            register: _osVerify
-            failed_when: "'error' in _osVerify.stdout[0]|lower"
-            tags: osVerify
-        rescue:
-          - name: Verify Error Rescue - copy /noconfirm {{ asaFileTransport }}://{{ asaFileHost }}/{{ asaOsImage }} disk0:/{{ asaOsImage }}
-            asa_command:
-              commands:
-                - copy /noconfirm {{ asaFileTransport }}://{{ asaFileHost }}/{{ asaOsImage }} disk0:/{{ asaOsImage }}
-              wait_for:
-                - result[0] contains copied
-            register: _osDeploy
-            vars:
-              ansible_command_timeout: 3605
-            tags: osDeploy
-          # TODO - Re-verify
-        ignore_errors: yes
-
+      ############### IMAGE VERIFY ###############
+      - name: Run Verify For Image - verify disk0:/{{ asaOsImage }}
+        asa_command:
+          commands:
+            - verify disk0:/{{ asaOsImage }}
+        register: _osVerify
+        vars:
+          ansible_command_timeout: 180
+        failed_when: "'error' in _osVerify.stdout[0]|lower"
+        tags: osVerify
       
       # TODO - ASA will ouput variable text on signature validation.
       # Sometimes just "Signature verified"
       # Other versions will display an embedded and computed hash.
       # Write a block that looks for signature verified, if not it goes deeper into checksums.
 
+      # Basic Validation - Look for signature verified.
       - name: Check for Signature Verified
         set_fact:
           asaOsVerified: true
-        when:
-          - "'signature verified' in _osVerify.stdout[0]|lower"
+        when: >
+          ("'signature verified' in _osVerify.stdout[0]|lower") or
+          ("'signature successfully validated' in _osVerify.stdout[0]|lower")
         tags: osVerify
 
-
+      # Basic Validation Univailable - Check for and compare embedded checksums.
       - name: Checksum Validation Block
         block:
-
           - name: Get Embedded Checksum
             set_fact:
               osEmbedded: "{{ item.split(':')[1]|trim }}"
@@ -262,11 +258,12 @@
             set_fact:
               asaOsVerified: true
             when: osEmbedded == osComputed
+            tags: osDeploy
         when:
           - asaOsVerified == false
-####  ######### END IMAGE VERIFY ###############
+      ############### END IMAGE VERIFY ###############
       
-####  ########### SET OS IMAGE ####################
+      ################# SET OS IMAGE ####################
       - name: Configure OS & Secondary OS (Mindful of Repeat Runs)
         block:
           - name: Clear System Boot Information
@@ -274,6 +271,8 @@
               lines:
                 - clear configure boot system
             register: _clearOsBoot
+            vars:
+              ansible_command_timeout: 180
             tags: osConfig
             
           - name: Set OS Image - boot system disk0:/{{ asaOsImage }}
@@ -281,17 +280,29 @@
               lines:
                 - boot system disk0:/{{ asaOsImage }}
             register: _setOsConfig
+            vars:
+              ansible_command_timeout: 180
+            tags: osConfig
+
+          - name: Debug Failed Boot Config
+            debug:
+              var: _setOsConfig
+            when: >
+              (playbook_debug_level > 3) or
+              (_setOsConfig is failed)
             tags: osConfig
     
-          - name: Set secondary boot image
+          - name: Set Secondary Boot Image
             asa_config:
               lines:
                 - boot system disk0:/{{ asaOsCurrentConfig[0] }}
+            vars:
+              ansible_command_timeout: 180
             register: _setOsSecondary
         
-          - name: Debug Failed verify
+          - name: Debug Failed Secondary Boot Config
             debug:
-              var: _setOsConfig
+              var: _setOsSecondary
             when: >
               (playbook_debug_level > 3) or
               (_setOsConfig is failed)
@@ -301,7 +312,7 @@
           - asaOsCurrentConfig[0] != asaOsImage
 
 
-###################### OS Cleanup #####################################
+      ###################### OS Cleanup #####################################
       - name: Cleanup old OS Image
         block:
           - name: List OS Images
@@ -309,12 +320,13 @@
               commands:
                 - dir disk0:/asa[0-9]*
             register: _asaOsInventory
+            vars:
+              ansible_command_timeout: 180
 
           - name: Gather Image Filenames
             set_fact:
               asaOsInventory: "{{ asaOsInventory|default([]) + [item.split()[-1]] }}"
-            when:
-              item.split() | length == 8
+            when: item.split() | length == 8
             with_items:
               - "{{ _asaOsInventory.stdout_lines[0] }}"
 
@@ -323,6 +335,8 @@
               commands:
                 - show run boot system
             register: _osUpdated
+            vars:
+              ansible_command_timeout: 180
             tags: osFact
 
           - name: Gather Image Filenames
@@ -335,11 +349,13 @@
             asa_command:
               commands:
                 - delete /noconfirm disk0:/{{ item }}
+                - failover exec mate - delete /noconfirm disk0:/{{ item }}
             when:
               - item not in asaOsUpdatedConfig
+            vars:
+              ansible_command_timeout: 180
             with_items:
               - "{{ asaOsInventory}}"
-
         when:
           - _setOsConfig is success
           - asaOsClean == true

@@ -215,6 +215,7 @@
           - name: Get Computed Checksum
             set_fact:
               asdmComputed: "{{ item.split(':')[1]|trim }}"
+            register: _setChecksum
             when: "item|trim|lower is search('computed')"
             with_items:
               - "{{ _asdmVerify.stdout_lines[0] }}"
