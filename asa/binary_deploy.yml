@@ -320,16 +320,16 @@
     set_fact:
       asaOsExists: true
     when:
-      - "asaOsImage in _asaOsDir.stdout[0]"
-      - "'error' not in _asaOsDir.stdout[0]|lower"
+      - asaOsImage in _asaOsDir.stdout[0]
+      - 'error' not in _asaOsDir.stdout[0]|lower
     tags: osDeploy
 
   - name: Set asaOsExists to false
     set_fact:
       asaOsExists: false
     when: >
-      ("_asaOsDir.stdout[0] is not search(asaOsImage)") or
-      ("_asaOsDir.stdout[0]|lower is search('error')")
+      (_asaOsDir.stdout[0] is not search(asaOsImage)) or
+      (_asaOsDir.stdout[0]|lower is search('error'))
     tags: osDeploy
 
   - name: asaOsExists Value
@@ -431,8 +431,8 @@
           commands:
             - copy /noconfirm {{ asaFileTransport }}://{{ asaFileHost}}/{{ asaOsImage }} disk0:/{{ asaOsImage }}
           wait_for: >
-            ( "'copied' in _osDeploy.stdout[0]|lower" ) or
-            ( "'done' in _osDeploy.stdout[0]|lower" )
+            ( result[0] contains copied ) or
+            ( result[0] contains done )
         register: _osDeploy
         vars:
           ansible_command_timeout: 3605
