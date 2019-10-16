@@ -321,7 +321,7 @@
       asaOsExists: true
     when:
       - asaOsImage in _asaOsDir.stdout[0]
-      - 'error' not in _asaOsDir.stdout[0]|lower
+      - "'error' not in _asaOsDir.stdout[0]|lower"
     tags: osDeploy
 
   - name: Set asaOsExists to false
@@ -329,7 +329,7 @@
       asaOsExists: false
     when: >
       (_asaOsDir.stdout[0] is not search(asaOsImage)) or
-      (_asaOsDir.stdout[0]|lower is search('error'))
+      (_asaOsDir.stdout[0]|lower is search("error"))
     tags: osDeploy
 
   - name: asaOsExists Value
