@@ -320,14 +320,16 @@
     set_fact:
       asaOsExists: true
     when:
-      - asaOsImage in _asaOsDir.stdout[0]
+      - "asaOsImage in _asaOsDir.stdout[0]"
       - "'error' not in _asaOsDir.stdout[0]|lower"
     tags: osDeploy
 
   - name: Set asaOsExists to false
     set_fact:
       asaOsExists: false
-    when: (asaOsImage not in _asaOsDir.stdout[0]) or ("'error' in _asaOsDir.stdout[0]|lower")
+    when: >
+      ("_asaOsDir.stdout[0] is not search(asaOsImage)") or
+      ("_asaOsDir.stdout[0]|lower is search('error')")
     tags: osDeploy
 
   - name: asaOsExists Value
