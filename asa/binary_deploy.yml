@@ -220,7 +220,7 @@
         vars:
           ansible_command_timeout: 3605
         failed_when:
-          - "_asdmDeploy.stdout[0]|lower contains 'error'"
+          - "'error' in _asdmDeploy.stdout[0]|lower"
         ignore_errors: yes
         tags: asdmDeploy
     
