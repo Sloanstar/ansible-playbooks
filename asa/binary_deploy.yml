@@ -430,9 +430,9 @@
         asa_command:
           commands:
             - copy /noconfirm {{ asaFileTransport }}://{{ asaFileHost}}/{{ asaOsImage }} disk0:/{{ asaOsImage }}
-          wait_for: >
-            ( result[0] contains copied ) or
-            ( result[0] contains done )
+#          wait_for: >
+#            ( result[0] contains copied ) or
+#            ( result[0] contains done )
         register: _osDeploy
         vars:
           ansible_command_timeout: 3605
@@ -448,6 +448,10 @@
       ############### END OS IMAGE COPY ###############
     
       ############### OS IMAGE VERIFY ###############
+      # TODO: Replace All This with better verify logic.
+      # This is broken.
+      #
+      #
       - name: Run Verify For Image - verify disk0:/{{ asaOsImage }}
         asa_command:
           commands:
