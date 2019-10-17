@@ -214,8 +214,8 @@
           commands:
             - copy /noconfirm {{ asaFileTransport }}://{{ asaFileHost }}/{{ asaAsdmImage }} disk0:/{{ asaAsdmImage }}
           wait_for: >
-            ( "'copied' in _asdmDeploy.stdout[0]|lower" ) or
-            ( "'done' in _asdmDeploy.stdout[0]|lower" )
+            ( result[0] contains copied ) or
+            ( result[0] contains done )
         register: _asdmDeploy
         vars:
           ansible_command_timeout: 3605
