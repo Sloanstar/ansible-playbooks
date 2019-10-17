@@ -213,12 +213,15 @@
         asa_command:
           commands:
             - copy /noconfirm {{ asaFileTransport }}://{{ asaFileHost }}/{{ asaAsdmImage }} disk0:/{{ asaAsdmImage }}
-          wait_for: >
-            ( result[0] contains copied ) or
-            ( result[0] contains done )
+#          wait_for: >
+#            ( result[0] contains copied ) or
+#            ( result[0] contains done )
         register: _asdmDeploy
         vars:
           ansible_command_timeout: 3605
+        failed_when:
+          - result[0]|lower contains error
+        ignore_errors: yes
         tags: asdmDeploy
     
       - name: Debug ASDM image deployment when failed
@@ -227,6 +230,8 @@
         when: >
           (playbook_debug_level > 0) or
           (_asdmDeploy is failed)
+        failed_when:
+          - _asdmDeploy is failed
         tags: asdmDeploy
       ############### END ASDM COPY ###############
     
