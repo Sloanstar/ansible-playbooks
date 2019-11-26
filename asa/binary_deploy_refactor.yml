@@ -220,15 +220,15 @@
         asaFile: "{{asaOsImage}}"
       tags: osDeploy
 
-      - name: Invoke File Copy Helper
-        include_tasks: helpers/file_copy.yml
-        tags: osDeploy
+    - name: Invoke File Copy Helper
+      include_tasks: helpers/file_copy.yml
+      tags: osDeploy
       ############### END OS COPY ###############
 
       ############### VERIFY OS #################
-      - name: OS Verify After Copy
-        include_tasks: helpers/os_verify.yml
-        tags: osDeploy
+    - name: OS Verify After Copy
+      include_tasks: helpers/os_verify.yml
+      tags: osDeploy
       ############### END OS VERIFY #############
 
     when: >

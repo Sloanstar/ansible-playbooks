@@ -1,12 +1,10 @@
 ---
-- name: Switch to Admin Context
-  tasks:
-  - name: Switch to [ADMIN] context
-    asa_command:
-      commands:
-        - changeto context admin
-    register: _asaContextAdmin
-    vars:
-      ansible_command_timeout: 180
-    when: asaMulticontext == "true"
-    tags: always
+- name: Switch to [ADMIN] context
+  asa_command:
+    commands:
+      - changeto context admin
+  register: _asaContextAdmin
+  vars:
+    ansible_command_timeout: 180
+  when: asaMulticontext == "true"
+  tags: always
