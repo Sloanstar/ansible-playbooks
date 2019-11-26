@@ -1,0 +1,96 @@
+---
+######### IMAGE VERIFY ###############
+# Requires:
+# asaDrive = storage device to start from (i.e. disk0)
+# asaFile = file path and filename of file to verify beginning from root.
+#
+# Returns / Sets:
+# asaFileVerified: True - File check succeeded. / False - File check did not complete successfully.
+
+- name: Set Verified to false
+  set_fact:
+    asaFileVerified: false
+  tags: always
+
+- name: Run Verify For Image - verify {{asaDrive}}:/{{ asaFile }}
+  asa_command:
+    commands:
+      - verify {{asaDrive}}:/{{ asaFile }}
+  register: _asaFileVerify
+  failed_when: "'error' in _asaFileVerify.stdout[0]|lower"
+  tags: always
+
+# TODO - ASA will ouput variable text on signature validation.
+# Sometimes just "Signature verified"
+# Other versions will display an embedded and computed hash.
+# Write a block that looks for signature verified, if not it goes deeper into checksums.
+
+# Basic Validation - Look for signature verified.
+- name: Check for Signature Verified
+  set_fact:
+    asaFileVerified: true
+  when: >
+    ("'signature verified' in _asaFileVerify.stdout[0]|lower") or
+    ("'signature successfully validated' in _asaFileVerify.stdout[0]|lower")
+  tags: always
+
+# Basic Validation Univailable - Check for and compare embedded checksums.
+- name: Checksum Validation Block
+  block:
+    - name: Get Embedded Checksum
+      set_fact:
+        fckEmbedded: "{{ item.split(':')[1]|trim }}"
+      when:
+        - "item|trim|lower is search('embedded')"
+      with_items:
+        - "{{ _asaFileVerify.stdout_lines[0] }}"
+      tags: always
+
+    - name: Get Computed Checksum
+      set_fact:
+        fckComputed: "{{ item.split(':')[1]|trim }}"
+      register: _setChecksum
+      when: "item|trim|lower is search('computed')"
+      with_items:
+        - "{{ _asaFileVerify.stdout_lines[0] }}"
+      failed_when: >
+        (fckEmbedded == "") or
+        (fckComputed == "") or
+        (fckEmbedded != fckComputed)
+      tags: always
+
+   - name: Debug _asaFileVerify.stdout_lines[0]
+      debug:
+        msg: "line: {{ item }}"
+        verbosity: 3
+      with_items:
+        - "{{ _asaFileVerify.stdout_lines[0] }}"
+      tags: always
+ 
+    - name: Log Passed Checksum
+      debug:
+        msg: "\nFile checksum OK!\n{{ fckComputed }}\n"
+      when: fckEmbedded == fckComputed
+      tags: always
+  
+    - name: Log Failed Checksum
+      debug:
+        msg: "\nfckEmbedded: {{ fckEmbedded }}\nfckComputed: {{ fckComputed }}\n"
+      when: fckEmbedded != Computed
+      tags: always
+      
+    - name: Set File Verified TRUE if Checksums Equal
+      set_fact:
+        asaFileVerified: true
+      when: fckEmbedded == fckComputed
+      tags: always
+  
+  when:
+    - asaFileVerified == false
+
+# TODO: Build in validation from calculated checksum against stored variable.
+# TODO: Perhaps a dictionary of images with the SHA hashes.
+# TODO: Last ditch effort to verify.
+# TODO: Will require getting checksums from Cisco Website for images.
+
+######### END FILE VERIFY ###############

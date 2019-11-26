@@ -83,7 +83,7 @@
   - name: REST Deployment / Re-verification
     block:
       ############### REST COPY OPERATIONS ###############
-      - name: Set File Copy Helper Facts
+      - name: Set File Copy Helper Facts - REST
         set_fact: 
           asaDrive: "disk0"
           asaFile: "{{asaRestImage}}"
@@ -137,9 +137,16 @@
 # Run verify on ASDM image if it exists
   - name: Tasks When ASDM Image Exists
     block:
+
       - name: Include ASDM Verification
-        include_tasks: helpers/asdm_verify.yml
+        include_tasks: helpers/file_verify.yml
         tags: asdmDeploy
+      
+      - name: Set ASDM Verified to asaFileVerified Value
+        set_fact:
+          asaAsdmVerified: "{{asaFileVerified}}"
+        tags: asdmDeploy
+
     when: asaAsdmExists == true
     tags: asdmDeploy
 
@@ -159,7 +166,12 @@
       ############### END ASDM COPY ###############
 
       - name: ASDM Verify
-        include_tasks: helpers/asdm_verify.yml
+        include_tasks: helpers/file_verify.yml
+        tags: asdmDeploy
+      
+      - name: Set ASDM Verified to asaFileVerified Value
+        set_fact:
+          asaAsdmVerified: "{{asaFileVerified}}"
         tags: asdmDeploy
 
       # TODO: Build in validation from calculated checksum against stored variable.
@@ -204,9 +216,16 @@
 ############### IMAGE VERIFY ###############
   - name: Tasks When OS Image Exists
     block:
+
       - name: Include OS Verification
-        include_tasks: helpers/os_verify.yml
+        include_tasks: helpers/file_verify.yml
         tags: osDeploy
+
+      - name: Set OS Verified to asaFileVerified Value
+        set_fact:
+          asaOsVerified: "{{asaFileVerified}}"
+        tags: osDeploy
+
     when: asaOsExists == true
 ###################################################
 
@@ -227,7 +246,12 @@
 
       ############### VERIFY OS #################
     - name: OS Verify After Copy
-      include_tasks: helpers/os_verify.yml
+      include_tasks: helpers/file_verify.yml
+      tags: osDeploy
+
+    - name: Set OS Verified to asaFileVerified Value
+      set_fact:
+        asaOsVerified: "{{asaFileVerified}}"
       tags: osDeploy
       ############### END OS VERIFY #############
 
