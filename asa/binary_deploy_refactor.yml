@@ -21,7 +21,6 @@
           asaRestVerified: false | bool
           asaAsdmVerified: false | bool
           asaOsVerified: false | bool
-          asaDisk: disk0
 
   tasks:
   - name: Include SSH Timeout
@@ -65,9 +64,9 @@
 
 # SMART Deploy (Copy only if file doesn't exist or fails verify)
 ############### IMAGE EXISTS ######################
-  - name: Set Facts for FileExist Helper
+  - name: Set Facts for File Exists Helper
     set_fact:
-      asaDisk: "disk0"
+      asaDrive: "disk0"
       asaFile: "{{asaAsdmImage}}"
     tags: asdmDeploy
   
@@ -75,7 +74,7 @@
     include_tasks: helpers/file_exists.yml
     tags: asdmDeploy
 
-  - name: Set asaAsdmExists to true
+  - name: Set asaAsdmExists to File Exists Results
     set_fact:
       asaAsdmExists: "{{asaFileExists}}"
     tags: asdmDeploy

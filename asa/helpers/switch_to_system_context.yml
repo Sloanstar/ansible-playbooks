@@ -1,12 +1,10 @@
 ---
-- name: Switch to System Context
-  tasks:
-  - name: Switch to [SYSTEM] context
-    asa_command:
-      commands:
-        - changeto system
-    register: _asaContextSystem
-    vars:
-      ansible_command_timeout: 180
-    when: asaMulticontext == "true"
-    tags: always
+- name: Switch to [SYSTEM] context
+  asa_command:
+    commands:
+      - changeto system
+  register: _asaContextSystem
+  vars:
+    ansible_command_timeout: 180
+  when: asaMulticontext == "true"
+  tags: always

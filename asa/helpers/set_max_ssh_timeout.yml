@@ -1,19 +1,17 @@
 ---
-- name: Set MAX SSH Timeout (60 mins)
-  tasks:
-  - name: Set Maximum SSH timeout
-    asa_config:
-      lines:
-        - ssh timeout 60
-    register: _sshTimeoutRemove
-    vars:
-      ansible_command_timeout: 180
-    tags: always
+- name: Set Maximum SSH timeout
+  asa_config:
+    lines:
+      - ssh timeout 60
+  register: _sshTimeoutRemove
+  vars:
+    ansible_command_timeout: 180
+  tags: always
 
-  - name: Debug SSH Timeout Removal
-    debug:
-      var: _sshTimeoutRemove
-    when: >
-      (playbook_debug_level > 0) or
-      (_sshTimeoutRemove is failed)
-    tags: always
+- name: Debug SSH Timeout Removal
+  debug:
+    var: _sshTimeoutRemove
+  when: >
+    (playbook_debug_level > 0) or
+    (_sshTimeoutRemove is failed)
+  tags: always
