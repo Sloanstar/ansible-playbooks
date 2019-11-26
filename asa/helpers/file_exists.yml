@@ -6,20 +6,23 @@
       - dir {{asaDrive}}:/{{ asaFile }}
   register: _asaFileDir
   tags: always
+
 - name: Set asaFileExists to true
   set_fact:
     asaFileExists: true
   when:
-    - asaAsdmImage in _asaFileDir.stdout[0]
+    - asaFile in _asaFileDir.stdout[0]
     - "'error' not in _asaFileDir.stdout[0]|lower"
   tags: always
-- name: Set asaAsdmExists to false
+
+- name: Set asaFileExists to false
   set_fact:
     asaFileExists: false
   when: >
     (asaFile not in _asaFileDir.stdout[0]) or
     ('error' in _asaFileDir.stdout[0]|lower)
   tags: always
+
 - name: asaFileExists Value
   debug:
     var: asaFileExists
