@@ -21,20 +21,15 @@
           asaRestVerified: false | bool
           asaAsdmVerified: false | bool
           asaOsVerified: false | bool
+          asaDisk: disk0
 
   tasks:
   - name: Include SSH Timeout
     include_tasks: "helpers/set_max_ssh_timeout.yml"
     tags: always
 
-  - name: Switch to [SYSTEM] context
-    asa_command:
-      commands:
-        - changeto system
-    register: _asaContextSystem
-    vars:
-      ansible_command_timeout: 180
-    when: asaMulticontext == "true"
+  - name: Include System Context Switch
+    include_tasks: "helpers/switch_to_system_context.yml"
     tags: always
 
 # TODO: Build Smart Deploy for REST.
@@ -68,29 +63,21 @@
 #
 
 
-# SMART Deploy (Copy if file doesn't exist or fails verify)
+# SMART Deploy (Copy only if file doesn't exist or fails verify)
 ############### IMAGE EXISTS ######################
-  - name: List Directory for Image Name
-    asa_command:
-      commands:
-        - dir disk0:/{{ asaAsdmImage }}
-    register: _asaAsdmDir
+  - name: Set Facts for FileExist Helper
+    set_fact:
+      asaDisk: "disk0"
+      asaFile: "{{asaAsdmImage}}"
+    tags: asdmDeploy
+  
+  - name: Check if File Exists
+    include_tasks: helpers/file_exists.yml
     tags: asdmDeploy
 
   - name: Set asaAsdmExists to true
     set_fact:
-      asaAsdmExists: true
-    when:
-      - asaAsdmImage in _asaAsdmDir.stdout[0]
-      - "'error' not in _asaAsdmDir.stdout[0]|lower"
-    tags: asdmDeploy
-
-  - name: Set asaAsdmExists to false
-    set_fact:
-      asaAsdmExists: false
-    when: >
-      (asaAsdmImage not in _asaAsdmDir.stdout[0]) or
-      ('error' in _asaAsdmDir.stdout[0]|lower)
+      asaAsdmExists: "{{asaFileExists}}"
     tags: asdmDeploy
 
   - name: asaAsdmExists Value
@@ -99,101 +86,18 @@
       verbosity: 3
     tags: asdmDeploy
 
-
 ###################################################
+# Run verify on ASDM image if it exists
   - name: Tasks When ASDM Image Exists
     block:
-      ######### IMAGE VERIFY ###############
-      - name: Run Verify For Image - verify disk0:/{{ asaAsdmImage }}
-        asa_command:
-          commands:
-            - verify disk0:/{{ asaAsdmImage }}
-        register: _asdmVerify
-        failed_when: "'error' in _asdmVerify.stdout[0]|lower"
+      - name: Include ASDM Verification
+        include_tasks: "helpers/asdm_verify.yml"
         tags: asdmDeploy
-      
-      # TODO - ASA will ouput variable text on signature validation.
-      # Sometimes just "Signature verified"
-      # Other versions will display an embedded and computed hash.
-      # Write a block that looks for signature verified, if not it goes deeper into checksums.
-
-
-      # Basic Validation - Look for signature verified.
-      - name: Check for Signature Verified
-        set_fact:
-          asaAsdmVerified: true
-        when: >
-          ("'signature verified' in _asdmVerify.stdout[0]|lower") or
-          ("'signature successfully validated' in _asdmVerify.stdout[0]|lower")
-        tags: asdmDeploy
-
-
-
-        # Basic Validation Univailable - Check for and compare embedded checksums.
-      - name: Checksum Validation Block
-        block:
-
-          - name: Get Embedded Checksum
-            set_fact:
-              asdmEmbedded: "{{ item.split(':')[1]|trim }}"
-            when:
-              - "item|trim|lower is search('embedded')"
-            with_items:
-              - "{{ _asdmVerify.stdout_lines[0] }}"
-            tags: asdmDeploy
-    
-          - name: Get Computed Checksum
-            set_fact:
-              asdmComputed: "{{ item.split(':')[1]|trim }}"
-            register: _setChecksum
-            when: "item|trim|lower is search('computed')"
-            with_items:
-              - "{{ _asdmVerify.stdout_lines[0] }}"
-            failed_when: >
-              (asdmEmbedded == "") or
-              (asdmComputed == "") or
-              (asdmEmbedded != asdmComputed)
-            tags: asdmDeploy
-    
-          - name: Debug _asdmVerify.stdout_lines[0]
-            debug:
-              msg: "line: {{ item }}"
-              verbosity: 3
-            with_items:
-              - "{{ _asdmVerify.stdout_lines[0] }}"
-            tags: asdmDeploy
-       
-          - name: Log Passed Checksum
-            debug:
-              msg: "\nFile checksum OK!\n{{ asdmComputed }}\n"
-            when: asdmEmbedded == asdmComputed
-            tags: asdmDeploy
-        
-          - name: Log Failed Checksum
-            debug:
-              msg: "\nasdmEmbedded: {{ asdmEmbedded }}\nasdmComputed: {{ asdmComputed }}\n"
-            when: asdmEmbedded != Computed
-            tags: asdmDeploy
-
-          - name: Set ASA ASDM Verified
-            set_fact:
-              asaAsdmVerified: true
-            when: asdmEmbedded == asdmComputed
-            tags: asdmDeploy
-        when:
-          - asaAsdmVerified == false
-
-
-      # TODO: Build in validation from calculated checksum against stored variable.
-      # TODO: Last ditch effort to verify.
-      # TODO: Will require getting checksums from Cisco Website for images.
-
-
-      ######### END IMAGE VERIFY ###############
     when: asaAsdmExists == true
-
+    tags: asdmDeploy
 
 ############### ASDM COPY OPERATIONS ###############
+# When ASDM Does Not Exist or Verification Failed.
   - name: ASDM Copy Operations
     block:
       - name: Copy ASDM Image to Disk - "copy /noconfirm {{ asaFileTransport }}://{{ asaFileHost }}/{{ asaAsdmImage }} disk0:/{{ asaAsdmImage }}"

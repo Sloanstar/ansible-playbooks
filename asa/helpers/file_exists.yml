@@ -1,0 +1,27 @@
+---
+############### IMAGE EXISTS ######################
+- name: List Directory for Image Name
+  asa_command:
+    commands:
+      - dir {{asaDrive}}:/{{ asaFile }}
+  register: _asaFileDir
+  tags: always
+- name: Set asaFileExists to true
+  set_fact:
+    asaFileExists: true|bool
+  when:
+    - asaAsdmImage in _asaFileDir.stdout[0]
+    - "'error' not in _asaFileDir.stdout[0]|lower"
+  tags: always
+- name: Set asaAsdmExists to false
+  set_fact:
+    asaFileExists: false|bool
+  when: >
+    (asaFile not in _asaFileDir.stdout[0]) or
+    ('error' in _asaFileDir.stdout[0]|lower)
+  tags: always
+- name: asaFileExists Value
+  debug:
+    var: asaFileExists
+    verbosity: 3
+  tags: always
