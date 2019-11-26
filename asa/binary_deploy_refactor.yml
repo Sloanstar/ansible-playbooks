@@ -23,21 +23,8 @@
           asaOsVerified: false | bool
 
   tasks:
-  - name: Set Maximum SSH timeout
-    asa_config:
-      lines:
-        - ssh timeout 60
-    register: _sshTimeoutRemove
-    vars:
-      ansible_command_timeout: 180
-    tags: always
-
-  - name: Debug SSH Timeout Removal
-    debug:
-      var: _sshTimeoutRemove
-    when: >
-      (playbook_debug_level > 0) or
-      (_sshTimeoutRemove is failed)
+  - name: Include SSH Timeout
+    include_tasks: "helpers/set_max_ssh_timeout.yml"
     tags: always
 
   - name: Switch to [SYSTEM] context
