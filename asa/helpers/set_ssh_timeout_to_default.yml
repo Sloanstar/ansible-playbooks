@@ -1,0 +1,19 @@
+---
+- name: SSH Timeout to Default
+  tasks:
+  - name: Set SSH Timeout Back to Desired Value ({{ asaSshTimeout }})
+    asa_config:
+      lines:
+        - ssh timeout {{ asaSshTimeout }}
+    register: _sshTimeoutAdd
+    vars:
+      ansible_command_timeout: 180
+    tags: always
+
+  - name: Debug setting SSH timeout to {{ asaSshTimeout }} min when failed
+    debug:
+      var: _sshTimeoutAdd
+    when: >
+      (playbook_debug_level > 0) or
+      (_sshTimeoutAdd is failed)
+    tags: always
