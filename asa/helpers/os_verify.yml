@@ -1,0 +1,73 @@
+- name: Run Verify For Image - verify disk0:/{{ asaOsImage }}
+  asa_command:
+    commands:
+      - verify disk0:/{{ asaOsImage }}
+  register: _osVerify
+  failed_when: "'error' in _osVerify.stdout[0]|lower"
+  tags: osDeploy
+
+# TODO - ASA will ouput variable text on signature validation.
+# Sometimes just "Signature verified"
+# Other versions will display an embedded and computed hash.
+# Write a block that looks for signature verified, if not it goes deeper into checksums.
+- name: Check for Signature Verified
+  set_fact:
+    asaOsVerified: true
+  when: >
+    ("'signature verified' in _osVerify.stdout[0]|lower") or
+    ("'signature successfully validated' in _osVerify.stdout[0]|lower")
+  tags: osDeploy
+
+# DO EMBEDDED CHECKSUM VALIDATION IF SIGNATURE VALIDATION DETECTION FAILED
+- name: Checksum Validation Block
+  block:
+    - name: Get Embedded Checksum
+      set_fact:
+        osEmbedded: "{{ item.split(':')[1]|trim }}"
+      when:
+        - "item|trim|lower is search('embedded')"
+      with_items:
+        - "{{ _osVerify.stdout_lines[0] }}"
+      tags: osDeploy
+
+    - name: Get Computed Checksum
+      set_fact:
+        osComputed: "{{ item.split(':')[1]|trim }}"
+      register: _setChecksum
+      when: "item|trim|lower is search('computed')"
+      with_items:
+        - "{{ _osVerify.stdout_lines[0] }}"
+      failed_when: >
+        (osEmbedded == "") or
+        (osComputed == "") or
+        (osEmbedded != osComputed)
+      tags: osDeploy
+
+    - name: Debug _osVerify.stdout_lines[0]
+      debug:
+        msg: "line: {{ item }}"
+        verbosity: 3
+      with_items:
+        - "{{ _osVerify.stdout_lines[0] }}"
+      tags: osDeploy
+ 
+    - name: Log Passed Checksum
+      debug:
+        msg: "\nFile checksum OK!\n{{ osComputed }}\n"
+      when: osEmbedded == osComputed
+      tags: osDeploy
+  
+    - name: Log Failed Checksum
+      debug:
+        msg: "\naosEmbedded: {{ osEmbedded }}\nosComputed: {{ osComputed }}\n"
+      when: osEmbedded != osComputed
+      tags: osDeploy
+    - name: Set ASA OS Verified
+      set_fact:
+        asaOsVerified: true
+      when: osEmbedded == osComputed
+      tags: osDeploy
+  ##### END BLOCK CONDITIONAL
+  when:
+    - asaOsVerified == false
+  ####### END IMAGE VERIFY ###############
