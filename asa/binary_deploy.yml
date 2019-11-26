@@ -364,8 +364,8 @@
         set_fact:
           asaOsVerified: true
         when: >
-          ("'signature verified' in _asdmVerify.stdout[0]|lower") or
-          ("'signature successfully validated' in _asdmVerify.stdout[0]|lower")
+          ("'signature verified' in _osVerify.stdout[0]|lower") or
+          ("'signature successfully validated' in _osVerify.stdout[0]|lower")
         tags: osDeploy
 
 
