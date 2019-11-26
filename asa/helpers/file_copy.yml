@@ -1,0 +1,24 @@
+- name: Copy File Image to Disk - "copy /noconfirm {{ asaFileTransport }}://{{ asaFileHost }}/{{ asaFile }} {{asaDrive}}:/{{ asaFile }}"
+  asa_command:
+    commands:
+      - copy /noconfirm {{ asaFileTransport }}://{{ asaFileHost }}/{{ asaFile }} {{asaDrive}}:/{{ asaFile }}
+    #wait_for: >
+    #  ( result[0] contains copied ) or
+    #  ( result[0] contains done )
+  register: _asaFileCopy
+  vars:
+    ansible_command_timeout: 3605
+  failed_when:
+    - "'error' in _asaFileCopy.stdout[0]|lower"
+  ignore_errors: yes
+  tags: always
+ 
+- name: Debug file image deployment when failed
+  debug:
+    var: _asaFileCopy
+  when: >
+    (playbook_debug_level > 0) or
+    (_asaFileCopy is failed)
+  failed_when:
+    - _asaFileCopy is failed
+  tags: always

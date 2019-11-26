@@ -31,40 +31,63 @@
     include_tasks: "helpers/switch_to_system_context.yml"
     tags: always
 
-# TODO: Build Smart Deploy for REST.
+# TODO: Build Smart Deploy for all binaries
 # TODO: Check if file exists
 # TODO: If File exists, verify.
 # TODO: If File Doesn't Exist or Verify Failed, transfer file
 
-############### REST API COPY OPERATION ###############
-  - name: Copy REST API to Disk - "copy /noconfirm {{ asaFileTransport }}://{{ asaFileHost }}/{{ asaRestImage }} disk0:/{{ asaRestImage }}"
-    asa_command:
-      commands:
-        - copy /noconfirm {{ asaFileTransport }}://{{ asaFileHost }}/{{ asaRestImage }} disk0:/{{ asaRestImage }}
-      wait_for:
-        - result[0] contains copied
-    register: _restCopy
-    vars:
-      ansible_command_timeout: 3605
+# Does REST File Exist
+
+  - name: Set Facts for File Exists Helper - REST
+    set_fact:
+      asaDrive: "disk0"
+      asaFile: "{{asaRestImage}}"
+    tags: restDeploy
+  
+  - name: Check if REST exists
+    include_tasks: "helpers/file_exists.yml"
     tags: restDeploy
 
-  - name: Debug REST API deployment when failed
-    debug:
-      var: _restCopy
-    when: >
-      (playbook_debug_level > 0) or
-      (_restCopy is failed)
+  - name: Set asaRestExists to File Exists Results
+    set_fact:
+      asaRestExists: "{{asaFileExists}}"
     tags: restDeploy
-############### END REST API COPY ###############
+
+  - name: DEBUG - asaRestExists Value
+    debug:
+      var: asaRestExists
+      verbosity: 3
+    tags: restDeploy
+  
+  #TODO: Verification Block
+
+#When REST file does not exist or verification failed
+  - name: REST Deployment / Re-verification
+    block:
+      ############### REST COPY OPERATIONS ###############
+      - name: Set File Copy Helper Facts
+        set_fact: 
+          asaDrive: "disk0"
+          asaFile: "{{asaRestImage}}"
+        tags: restDeploy
+    
+      - name: Invoke File Copy Helper
+        include_tasks: helpers/file_copy.yml
+        tags: restDeploy
+      ############### END REST COPY ###############
+
+    when: >
+      (asaRestExists == false) # or
+      #(asaRestVerified == false)
 
 #
 # TODO: Build function to collect wrapped SHA2 signature from REST API and check it.
 #
 
 
-# SMART Deploy (Copy only if file doesn't exist or fails verify)
+# ASDM SMART Deploy (Copy only if file doesn't exist or fails verify)
 ############### IMAGE EXISTS ######################
-  - name: Set Facts for File Exists Helper
+  - name: Set Facts for File Exists Helper - ASDM
     set_fact:
       asaDrive: "disk0"
       asaFile: "{{asaAsdmImage}}"
@@ -95,100 +118,24 @@
     when: asaAsdmExists == true
     tags: asdmDeploy
 
-############### ASDM COPY OPERATIONS ###############
 # When ASDM Does Not Exist or Verification Failed.
-  - name: ASDM Copy Operations
+  - name: ASDM Deployment / Re-Verification
     block:
-      - name: Copy ASDM Image to Disk - "copy /noconfirm {{ asaFileTransport }}://{{ asaFileHost }}/{{ asaAsdmImage }} disk0:/{{ asaAsdmImage }}"
-        asa_command:
-          commands:
-            - copy /noconfirm {{ asaFileTransport }}://{{ asaFileHost }}/{{ asaAsdmImage }} disk0:/{{ asaAsdmImage }}
-#          wait_for: >
-#            ( result[0] contains copied ) or
-#            ( result[0] contains done )
-        register: _asdmDeploy
-        vars:
-          ansible_command_timeout: 3605
-        failed_when:
-          - "'error' in _asdmDeploy.stdout[0]|lower"
-        ignore_errors: yes
+      ############### ASDM COPY OPERATIONS ###############
+      - name: Set File Copy Helper Facts
+        set_fact: 
+          asaDrive: "disk0"
+          asaFile: "{{asaAsdmImage}}"
         tags: asdmDeploy
     
-      - name: Debug ASDM image deployment when failed
-        debug:
-          var: _asdmDeploy
-        when: >
-          (playbook_debug_level > 0) or
-          (_asdmDeploy is failed)
-        failed_when:
-          - _asdmDeploy is failed
+      - name: Invoke File Copy Helper
+        include_tasks: helpers/file_copy.yml
         tags: asdmDeploy
       ############### END ASDM COPY ###############
-    
-     # Basic Validation - Look for signature verified.
-      - name: Check for Signature Verified
-        set_fact:
-          asaAsdmVerified: true
-        when: >
-          ("'signature verified' in _asdmVerify.stdout[0]|lower") or
-          ("'signature successfully validated' in _asdmVerify.stdout[0]|lower")
+
+      - name: ASDM Verify
+        include_tasks: "helpers/asdm_verify.yml"
         tags: asdmDeploy
-
-
-
-        # Basic Validation Univailable - Check for and compare embedded checksums.
-      - name: Checksum Validation Block
-        block:
-
-          - name: Get Embedded Checksum
-            set_fact:
-              asdmEmbedded: "{{ item.split(':')[1]|trim }}"
-            when:
-              - "item|trim|lower is search('embedded')"
-            with_items:
-              - "{{ _asdmVerify.stdout_lines[0] }}"
-            tags: asdmDeploy
-    
-          - name: Get Computed Checksum
-            set_fact:
-              asdmComputed: "{{ item.split(':')[1]|trim }}"
-            register: _setChecksum
-            when: "item|trim|lower is search('computed')"
-            with_items:
-              - "{{ _asdmVerify.stdout_lines[0] }}"
-            failed_when: >
-              (asdmEmbedded == "") or
-              (asdmComputed == "") or
-              (asdmEmbedded != asdmComputed)
-            tags: asdmDeploy
-    
-          - name: Debug _asdmVerify.stdout_lines[0]
-            debug:
-              msg: "line: {{ item }}"
-              verbosity: 3
-            with_items:
-              - "{{ _asdmVerify.stdout_lines[0] }}"
-            tags: asdmDeploy
-       
-          - name: Log Passed Checksum
-            debug:
-              msg: "\nFile checksum OK!\n{{ asdmComputed }}\n"
-            when: asdmEmbedded == asdmComputed
-            tags: asdmDeploy
-        
-          - name: Log Failed Checksum
-            debug:
-              msg: "\nasdmEmbedded: {{ asdmEmbedded }}\nasdmComputed: {{ asdmComputed }}\n"
-            when: asdmEmbedded != Computed
-            tags: asdmDeploy
-
-          - name: Set ASA ASDM Verified
-            set_fact:
-              asaAsdmVerified: true
-            when: asdmEmbedded == asdmComputed
-            tags: asdmDeploy
-        when:
-          - asaAsdmVerified == false
 
       # TODO: Build in validation from calculated checksum against stored variable.
       # TODO: Last ditch effort to verify.
