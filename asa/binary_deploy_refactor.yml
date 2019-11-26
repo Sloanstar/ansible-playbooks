@@ -60,6 +60,12 @@
     tags: restDeploy
   
   #TODO: Verification Block
+  #Until then set verified to false
+  - name: Set REST Verified FALSE
+    set_fact:
+      asaRestVerified: false
+    tags: restDeploy
+    #################################
 
 #When REST file does not exist or verification failed
   - name: REST Deployment / Re-verification
@@ -77,8 +83,8 @@
       ############### END REST COPY ###############
 
     when: >
-      (asaRestExists == false) # or
-      #(asaRestVerified == false)
+      (asaRestExists == false) or
+      (asaRestVerified == false)
 
 #
 # TODO: Build function to collect wrapped SHA2 signature from REST API and check it.
