@@ -63,14 +63,23 @@
       verbosity: 3
     tags: restDeploy
   
-  #TODO: Verification Block
-  #Until then set verified to false
-  - name: Set REST Verified FALSE
-    set_fact:
-      asaRestVerified: false
+###################################################
+# Run verify on REST image if it exists
+  - name: Tasks when REST image exists
+    block:
+
+      - name: Include REST Verification
+        include_tasks: helpers/file_verify.yml
+        tags: restDeploy
+      
+      - name: Set REST verified to asaFileVerified value
+        set_fact:
+          asaRestVerified: "{{ asaFileVerified }}"
+        tags: restDeploy
+      
+    when: asaRestExists == true
     tags: restDeploy
-    #################################
-  
+
   # ASA REST API does not contain embedded signature.
   # asa-restapi-7131-lfbff-k8.SPA
   # MD5: 58a38e1d53f514e631affa33e428f60c
@@ -93,6 +102,15 @@
         include_tasks: helpers/file_copy.yml
         tags: restDeploy
       ############### END REST COPY ###############
+
+      - name: REST Verify
+        include_tasks: helpers/file_verify.yml
+        tags: restDeploy
+      
+      - name: Set REST verified to asaFileVerified value
+        set_fact:
+          asaRestVerified: "{{ asaFileVerified }}"
+        tags: restDeploy
 
     when: >
       (asaRestExists == false) or
@@ -127,7 +145,7 @@
       asaAsdmExists: "{{asaFileExists}}"
     tags: asdmDeploy
 
-  - name: asaAsdmExists Value
+  - name: DEBUG - asaAsdmExists Value
     debug:
       var: asaAsdmExists
       verbosity: 3
