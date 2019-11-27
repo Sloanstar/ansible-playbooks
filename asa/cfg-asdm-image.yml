@@ -9,46 +9,40 @@
   #Tested Models:       5516,5545,5585
   #Tested Modes:        Single Context, Multi Context
 
-  # Known Issue:
-  # Due to ASA SSH timeout configuration limitations I am unable to stay connected to the ASA for a period of longer than 60 mins.
-  # If the ASA copy operation takes longer than 60 mins, the socket will be forcibly closed by the remote (ASA) side.
-  # The copy operation seems to continue even after the SSH socket is terminated (at least when using tftp).
-  # As a workaround you can run the playbook with -t asdmVerify, sshTimeout to do a verification on the operating system later and reset your SSH timeout
+  # Requires: defined asaAsdmImage variable (recommend defining in inventory).
+
+  # This playbook will check to see if the ASDM file specified by asaAsdmImage exists.
+  # If the image exists it will verify it, and if verified it will set the image as the
+  # current ASDM image and save the configuration.
+
+  # Options (passed as extra_var):
+  # AsdmCopy=true to copy the ASDM file to the ASA if it does not exist on box.
+  # DANGER: In failover configuration this could result in mate not having appropriate image.
+  # TODO: determine failover status and execute copy command on mate if applicable.
+
+  # AsdmClean=true to cleanup unused ASDM images
+  # TODO: determine failover status and cleanup on mate if applicable.
 
   vars:
           playbook_debug_level: 0
-          asaAsdmVerified: true | bool
+          asaAsdmVerified: false | bool
           asaAsdmCopy: "{{ AsdmCopy | default(false) | bool }}"
-          asaAsdmClean: "{{ AsdmClean | default(true) | bool }}"
+          asaAsdmClean: "{{ AsdmClean | default(false) | bool }}"
 
   tasks:
-
-  - name: Set Maximum SSH timeout
-    asa_config:
-      lines:
-        - ssh timeout 60
-    register: _sshTimeoutRemove
-    vars:
-      ansible_command_timeout: 180
-    tags: sshTimeout
-
-  - name: Debug SSH Timeout Removal
-    debug:
-      var: _sshTimeoutRemove
-    when: >
-      (playbook_debug_level > 0) or
-      (_sshTimeoutRemove is failed)
-    tags: sshTimeout
-
-  - name: Switch to [SYSTEM] context
-    asa_command:
-      commands:
-        - changeto system
-    register: _asaContextSystem
-    vars:
-      ansible_command_timeout: 180
-    when: asaMulticontext == "true"
+  - name: Include SSH Timeout
+    include_tasks: helpers/set_max_ssh_timeout.yml
     tags: always
+
+  - name: Include System Context Switch
+    include_tasks: helpers/switch_to_system_context.yml
+    tags: always
+  
+  - name: asaAsdmCopy Value
+    debug:
+      var: asaAsdmCopy
+      verbosity: 3
+    tags: asdmFact
 
 ############### RECORD CURRENT ASDM ###############
   - name: Get ASDM Setting
@@ -63,7 +57,7 @@
   - name: Debug ASDM Show
     debug:
       var: _asdmShow
-      verbosity: 2
+      verbosity: 3
     when: _asdmShow is failed
     tags: asdmFact
 ###################################################
@@ -77,37 +71,28 @@
   - name: Display current ASDM Version
     debug:
       var: asaCurrentAsdm
-    when: asaCurrentAsdm != ""
+    when:
+      - asaCurrentAsdm | length > 0
+      - asaCurrentAsdm is defined
     tags: asdmFact
 ###################################################
 
+  - name: Set facts for file helpers - ASDM
+    set_fact:
+      asaDrive: "disk0"
+      asaFile: "{{asaAsdmImage}}"
+    tags: always
+
 ############### IMAGE EXISTS ######################
-  - name: List Directory for Image Name
-    asa_command:
-      commands:
-        - dir disk0:/{{ asaAsdmImage }}
-    register: _asaAsdmDir
-    vars:
-      ansible_command_timeout: 180
+  - name: Check ASDM Image Exists
+    include_tasks: helpers/file_exists.yml
     tags: asdmFact
 
-  - name: Set asaAsdmExists to true
+  - name: Set asaAsdmExists value to asaFileExists value
     set_fact:
-      asaAsdmExists: true
+      asaAsdmExists: "{{asaFileExists}}"
     when:
-      - asaAsdmImage in _asaAsdmDir.stdout[0]
-      - "'error' not in _asaAsdmDir.stdout[0]|lower"
-    tags: asdmFact
-
-  - name: Set asaAsdmExists to false
-    set_fact:
-      asaAsdmExists: false
-    when: >
-      (asaAsdmImage not in _asaAsdmDir.stdout[0]) or
-      ('error' in _asaAsdmDir.stdout[0]|lower)
-    failed_when:
-      - asaAsdmExists == false
-      - asaAsdmCopy == false
+      - asaFileExists is defined
     tags: asdmFact
 
   - name: asaAsdmExists Value
@@ -115,150 +100,44 @@
       var: asaAsdmExists
       verbosity: 3
     tags: asdmFact
-
-  - name: asaAsdmCopy Value
-    debug:
-      var: asaAsdmCopy
-      verbosity: 3
-    tags: asdmFact
 ###################################################
 
-
-############### ASDM COPY OPERATION ###############
-  - name: ASDM Copy Block
-    block:
-      - name: Copy ASDM Image to Disk - "copy /noconfirm {{ asaFileTransport }}://{{ asaFileHost }}/{{ asaAsdmImage }} disk0:/{{ asaAsdmImage }}"
-        asa_command:
-          commands:
-            - copy /noconfirm {{ asaFileTransport }}://{{ asaFileHost }}/{{ asaAsdmImage }} disk0:/{{ asaAsdmImage }}
-          wait_for:
-            - result[0] contains copied
-        register: _asdmDeploy
-        vars:
-          ansible_command_timeout: 3605
-        tags: asdmDeploy
-    
-      - name: Debug ASDM image deployment when failed
-        debug:
-          var: _asdmDeploy
-        when: >
-          (playbook_debug_level > 0) or
-          (_asdmDeploy is failed)
-        tags: asdmDeploy
-  
-      - name: List Directory for Image Name
-        asa_command:
-          commands:
-            - dir disk0:/{{ asaAsdmImage }}
-        register: _asaAsdmDirCopy
-        vars:
-          ansible_command_timeout: 180
-        tags: asdmFact
-    
-      - name: Set asaAsdmExists to true
-        set_fact:
-          asaAsdmExists: true
-        when:
-          - asaAsdmImage in _asaAsdmDirCopy.stdout[0]
-          - "'error' not in _asaAsdmDirCopy.stdout[0]|lower"
-        tags: asdmFact
-    
-      - name: Set asaAsdmExists to false
-        set_fact:
-          asaAsdmExists: false
-        when: >
-          (asaAsdmImage not in _asaAsdmDirCopy.stdout[0]) or
-          ('error' in _asaAsdmDirCopy.stdout[0]|lower)
-        failed_when:
-          - asaAsdmExists = false
-        tags: asdmFact
-    when: 
+################## COPY IMAGE #####################
+  - name: Copy ASDM Image if not existent.
+    include_tasks: helpers/file_copy.yml
+    when:
       - asaAsdmExists == false
       - asaAsdmCopy == true
-    tags: asdmDeploy
-############### END ASDM COPY ###############
+    tags: asdmCopy
 
-  - name: Tasks When ASDM Image Exists
+  - name: Set EXISTS to true if successful
+    set_fact:
+      asaAsdmExists: true
+    when: _asaFileCopy is success
+###################################################
+
+################# VERIFY IMAGE ####################
+  - name: Tasks when image exists
     block:
-      ############### IMAGE VERIFY ###############
-      - name: Run Verify For Image - verify disk0:/{{ asaAsdmImage }}
-        asa_command:
-          commands:
-            - verify disk0:/{{ asaAsdmImage }}
-        register: _asdmVerify
-        vars:
-          ansible_command_timeout: 180
-        failed_when: "'error' in _asdmVerify.stdout[0]|lower"
-        tags: asdmVerify
+      - name: File Validation
+        include_tasks: helpers/file_verify.yml
+        tags: asdmFact
 
-      # Basic Validation - Look for signature verified.
-      - name: Check for Signature Verified
+      - name: Set Verified to asaFileVerified value
         set_fact:
-          asaAsdmVerified: true
-        when: >
-          ("'signature verified' in _asdmVerify.stdout[0]|lower") or
-          ("'signature successfully validated' in _asdmVerify.stdout[0]|lower")
-        tags: asdmDeploy
+          asaAsdmVerified: "{{asaFileVerified}}"
+        tags: asdmFact
+    when: asaAsdmExists == true
+###################################################
 
-      # Basic Validation Univailable - Check for and compare embedded checksums.
-      - name: Checksum Validation Block
-        block:
-          - name: Get Embedded Checksum
-            set_fact:
-              asdmEmbedded: "{{ item.split(':')[1]|trim }}"
-            when:
-              - "item|trim|lower is search('embedded')"
-            with_items:
-              - "{{ _asdmVerify.stdout_lines[0] }}"
-            tags: asdmVerify
-    
-          - name: Get Computed Checksum
-            set_fact:
-              asdmComputed: "{{ item.split(':')[1]|trim }}"
-            register: _setChecksum
-            when: "item|trim|lower is search('computed')"
-            with_items:
-              - "{{ _asdmVerify.stdout_lines[0] }}"
-            failed_when: >
-              (asdmEmbedded == "") or
-              (asdmComputed == "") or
-              (asdmEmbedded != asdmComputed)
-            tags: asdmVerify
-    
-          - name: Debug _asdmVerify.stdout_lines[0]
-            debug:
-              msg: "line: {{ item }}"
-              verbosity: 3
-            with_items:
-              - "{{ _asdmVerify.stdout_lines[0] }}"
-            tags: asdmVerify
-       
-          - name: Log Passed Checksum
-            debug:
-              msg: "\nFile checksum OK!\n{{ asdmComputed }}\n"
-            when: asdmEmbedded == asdmComputed
-            tags: asdmVerify
-        
-          - name: Log Failed Checksum
-            debug:
-              msg: "\nasdmEmbedded: {{ asdmEmbedded }}\nasdmComputed: {{ asdmComputed }}\n"
-            when: asdmEmbedded != asdmComputed
-            tags: asdmVerify
-          
-          - name: Set ASA ASDM Verified
-            set_fact:
-              asaAsdmVerified: true
-            when: asdmEmbedded == asdmComputed
-            tags: asdmDeploy
-        when:
-          - asaAsdmVerified == false
-      ################# END IMAGE VERIFY ###############
-      
+############ ASDM Configuration Block #############
+  - name: ASDM Configuration Block
+    block:   
       ################# SET ASDM IMAGE ####################
-      - name: Set ASDM Image - asdm image disk0:/{{ asaAsdmImage }}
+      - name: Set ASDM Image - asdm image {{asaDrive}}:/{{ asaAsdmImage }}
         asa_config:
           lines:
-            - asdm image disk0:/{{ asaAsdmImage }}
+            - asdm image {{asaDrive}}:/{{ asaAsdmImage }}
         register: _asdmConfig
         when:
           - asaAsdmVerified == true
@@ -267,7 +146,7 @@
           ansible_command_timeout: 180
         tags: asdmConfig
     
-      - name: Debug Failed verify
+      - name: DEBUG - Failed Configuration
         debug:
           var: _asdmConfig
         when: >
@@ -282,10 +161,11 @@
           - name: List ASDM Images
             asa_command:
               commands:
-                - dir disk0:/asdm-[0-9]*.bin
+                - dir {{asaDrive}}:/asdm-[0-9]*.bin
             register: _asaAsdmInventory
             vars:
               ansible_command_timeout: 180
+            tags: asdmClean
 
           - name: Gather Image Filenames
             set_fact:
@@ -293,6 +173,7 @@
             when: item.split() | length == 8
             with_items:
               - "{{ _asaAsdmInventory.stdout_lines[0] }}"
+            tags: asdmClean
 
           - name: Delete ASDM Images
             asa_command:
@@ -304,21 +185,17 @@
             vars:
               ansible_command_timeout: 180
             with_items:
-              - "{{ asaAsdmInventory}}"
+              - "{{ asaAsdmInventory }}"
+            tags: asdmClean
         when:
           - _asdmConfig is success
           - asaAsdmClean == true
-
-#########################################################################
+      #############################################################
 
       - name: Save [SYSTEM] Context Configuration
-        asa_command:
-          commands:
-            - copy /noconfirm running-config startup-config
-        vars:
-          ansible_command_timeout: 180
+        include_tasks: helpers/save_configuration.yml
         when: asaMulticontext == "true"
-        tags: asdmConfig
+        tags: always
 
 ###################################################
 
@@ -326,36 +203,14 @@
     when: asaAsdmExists == true
 ###################################################
 
-  - name: Switch to [ADMIN] context
-    asa_command:
-      commands:
-        - changeto context admin
-    register: _asaContextAdmin
-    vars:
-      ansible_command_timeout: 180
-    when: asaMulticontext == "true"
+  - name: Exit System Context
+    include_tasks: helpers/exit_system_context.yml
     tags: always
 
-  - name: Set SSH Timeout Back to Desired Value ({{ asaSshTimeout }})
-    asa_config:
-      lines:
-        - ssh timeout {{ asaSshTimeout }}
-    register: _sshTimeoutAdd
-    vars:
-      ansible_command_timeout: 180
-    tags: sshTimeout
-
-  - name: Debug setting SSH timeout to {{ asaSshTimeout }} min when failed
-    debug:
-      var: _sshTimeoutAdd
-    when: >
-      (playbook_debug_level > 0) or
-      (_sshTimeoutAdd is failed)
-    tags: sshTimeout
+  - name: Restore SSH to default
+    include_tasks: helpers/set_ssh_timeout_to_default.yml
+    tags: always
 
   - name: Save Configuration
-    asa_command:
-      commands:
-        - copy /noconfirm running-config startup-config
-    vars:
-      ansible_command_timeout: 180
+    include_tasks: helpers/save_configuration.yml
+    tags: always

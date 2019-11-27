@@ -1,6 +1,6 @@
 ---
-- name: ASA Binary Deployment
-  hosts: ASA
+- name: ASA REST API Deployment / Configuration
+  hosts: ASA_PRIMARY
   gather_facts: no
   connection: network_cli
 
@@ -9,123 +9,206 @@
   #Tested Models:       5516,5545,5585
   #Tested Modes:        Single Context, Multi Context
 
-  # Known Issue:
-  # Due to ASA SSH timeout configuration limitations I am unable to stay connected to the ASA for a period of longer than 60 mins.
-  # If the ASA copy operation takes longer than 60 mins, the socket will be forcibly closed by the remote (ASA) side.
-  # For this reason smaller binaries are transferred first.
-  # The copy operation seems to continue even after the SSH socket is terminated (at least when using tftp).
-  # As a workaround you can run the playbook with -t osVerify, sshTimeout to do a verification on the operating system later and reset your SSH timeout
+  # Requires: defined asaRestImage variable (recommend defining in inventory).
+
+  # This playbook will check to see if the REST file specified by asaRestImage exists.
+  # If the image exists it will verify it, and if verified it will set the image as the
+  # current REST image and save the configuration.
+  # This will also enable the REST agent if not currently enabled.
+
+  # Options (passed as extra_var):
+  # RestCopy=true to copy the REST file to the ASA if it does not exist on box.
+  # DANGER: In failover configuration this could result in mate not having appropriate image.
+  # TODO: determine failover status and execute copy command on mate if applicable.
+
+  # RestClean=true to cleanup unused REST images
+  # TODO: determine failover status and cleanup on mate if applicable.
 
   vars:
           playbook_debug_level: 0
+          asaRestVerified: false | bool
+          asaRestCopy: "{{ RestCopy | default(false) | bool }}"
+          asaRestClean: "{{ RestClean | default(false) | bool }}"
+
 
   tasks:
-  - name: Switch to [SYSTEM] context
-    asa_command:
-      commands:
-        - changeto system
-    register: _asaContextSystem
-    vars:
-      ansible_command_timeout: 180
-    when: asaMulticontext == "true"
+  - name: Include SSH Timeout
+    include_tasks: helpers/set_max_ssh_timeout.yml
     tags: always
 
-############### RECORD CURRENT ASDM ###############
-  - name: Get ASDM Setting
+  - name: Include System Context Switch
+    include_tasks: helpers/switch_to_system_context.yml
+    tags: always
+  
+  - name: asaRestCopy Value
+    debug:
+      var: asaRestCopy
+      verbosity: 3
+    tags: restFact
+
+############### RECORD CURRENT REST ###############
+  - name: Get REST Image
     asa_command:
       commands:
-        - show asdm image
-    register: _asdmShow
-    tags: asdmFact
+        - show run rest-api | i rest-api image
+    register: _restShow
+    tags: restFact
 
-  - name: Debug ASDM Show
+  - name: Debug REST Show
     debug:
-      var: _asdmShow
-      verbosity: 2
-    when: _asdmShow is failed
-    tags: asdmFact
+      var: _restShow
+      verbosity: 3
+    when: _restShow is failed
+    tags: restFact
 ###################################################
 
-############### SHOW CURRENT ASDM #################
-  - name: Set Fact - ASDM Image
+############### SHOW CURRENT REST #################
+  - name: Set Fact - REST Image
     set_fact:
-      asaCurrentAsdm: "{{ _asdmShow.stdout[0].split('/')[-1]|trim }}"
-    tags: asdmFact
+      asaCurrentRest: "{{ _restShow.stdout[0].split('/')[-1]|trim }}"
+    tags: restFact
 
-  - name: Display current ASDM Version
+  - name: Display current REST Version
     debug:
-      var: asaCurrentAsdm
-    when: asaCurrentAsdm != ""
-    tags: asdmFact
+      var: asaCurrentRest
+    when:
+      - asaCurrentRest | length > 0
+      - asaCurrentRest is defined
+    tags: restFact
 ###################################################
 
-############### IMAGE VERIFY ###############
-  - name: Run Verify For Image - verify disk0:/{{ asaAsdmImage }}
-    asa_command:
-      commands:
-        - verify disk0:/{{ asaAsdmImage }}
-    register: _asdmVerify
-    failed_when: "'error' in _asdmVerify.stdout[0]|lower"
-    tags: asdmVerify
-
-  - name: Debug Failed verify
-    debug:
-      var: _asdmVerify
-      verbosity: 2
-    when: >
-      (playbook_debug_level > 3) or
-      (_asdmVerify is failed)
-    tags: asdmVerify
-
-  - name: Gather Checksums
+  - name: Set facts for file helpers - REST
     set_fact:
-      asdmEmbedded: "{{ _asdmVerify.stdout_lines[0][2].split(':')[1]|trim }}"
-      asdmCalculated: "{{ _asdmVerify.stdout_lines[0][3].split(':')[1]|trim }}"
-    register: _setChecksum
-    failed_when: >
-      (asdmEmbedded == "") or
-      (asdmCalculated == "") or
-      (asdmEmbedded != asdmCalculated)
-    tags: asdmVerify
+      asaDrive: "disk0"
+      asaFile: "{{asaRestImage}}"
+    tags: always
 
-  - name: Log Passed Checksum
-    debug:
-      msg: "\nFile checksum OK!\n{{ asdmCalculated }}\n"
-    when: _setChecksum is success
-    tags: asdmVerify
+############### IMAGE EXISTS ###############
+  - name: Check REST Image Exists
+    include_tasks: helpers/file_verify.yml
+    tags: restFact
 
-  - name: Log Failed Checksum
+  - name: Set asaRestExists value to asaFileExists value
+    set_fact:
+      asaRestExists: "{{asaFileExists}}"
+    when:
+      - asaFileExists is defined
+    tags: restFact
+
+  - name: DEBUG - asaRestExists Value
     debug:
-      msg: "\nasdmEmbedded: {{ asdmEmbedded }}\nasdmCalculated: {{ asdmCalculated }}\n"
-    when: _setChecksum is failed
-    tags: asdmVerify
-############# END IMAGE VERIFY ###############
+      var: asaRestExists
+      verbosity: 3
+    tags: restFact
+###########################################
+
+################## COPY IMAGE #####################
+  - name: Copy REST Image if not existent.
+    include_tasks: helpers/file_copy.yml
+    when:
+      - asaRestExists == false
+      - asaRestCopy == true
+    tags: restCopy
+  
+  - name: Set EXISTS to true if successful
+    set_fact:
+      asaRestExists: true
+    when: _asaFileCopy is success
+###################################################
+
+################# VERIFY IMAGE ####################
+  - name: Tasks when image exists
+    block:
+      - name: File Validation
+        include_tasks: helpers/file_verify.yml
+        tags: restFact
+
+      - name: Set Verified to asaFileVerified value
+        set_fact:
+          asaRestVerified: "{{asaFileVerified}}"
+        tags: rstFact
+    when: asaRestExists == true
+###################################################
     
-############### SET ASDM IMAGE ####################
-  - name: Set ASDM Image - asdm image disk0:/{{ asaAsdmImage }}
-    asa_config:
-      lines:
-        - asdm image disk0:/{{ asaAsdmImage }}
-    register: _asdmConfig
-    when: _setChecksum is success
-    failed_when: _setChecksum is failed
-    tags: asdmConfig
+########## REST Configuration Block ###############
+  - name: REST Configuration Block
+    block:
+    ################# SET REST IMAGE #####################
+      - name: Set REST Image - rest-api image {{asaDrive}}:/{{ asaRestImage }}
+        asa_config:
+          lines:
+            - no rest-api agent
+            - rest-api image {{asaDrive}}:/{{ asaRestImage }}
+            - rest-api agent
+        register: _restConfig
+        when:
+          - asaRestVerified == true
+          - asaCurrentRest != asaRestImage
+        vars:
+          ansible_command_timeout: 180
+        tags: restConfig
 
-  - name: Debug Failed verify
-    debug:
-      var: _asdmConfig
-    when: >
-      (playbook_debug_level > 3) or
-      (_asdmConfig is failed)
-    tags: asdmConfig
-###################################################
+      - name: DEBUG - Failed Configuration
+        debug:
+          var: _restConfig
+        when: >
+          (playbook_debug_level > 3) or
+          (_restConfig is failed)
+        tags: restConfig
+      ####################################################
+    
+      ############### REST IMAGE Cleanup #################
+      - name: REST Image Cleanup Block
+        block:
+          - name: List REST Images
+            asa_command:
+              commands:
+                - dir {{asaDrive}}:/asa-restapi*
+            register: _asaRestInventory
+            vars:
+              ansible_command_timeout: 180
+            tags: restClean
 
-  - name: Switch to [ADMIN] context
-    asa_command:
-      commands:
-        - changeto context admin
-    register: _asaContextAdmin
-    vars:
-      ansible_command_timeout: 180
-    when: asaMulticontext == "true"
+          - name: Gather REST Filenames
+            set_fact:
+              asaRestInventory: "{{ asaAsdmInventory|default([]) + [item.split()[-1]] }}"
+            when: item.split() | length == 8
+            with_items:
+              - "{{ _asaRestInventory.stdout_lines[0] }}"
+            tags: restClean
+          
+          - name: Delete REST Images
+            asa_command:
+              commands:
+                - delete /noconfirm {{ asaDrive }}:/{{ item }}
+                - failover exec mate delete /noconfirm {{ asaDrive }}:/{{ item }}
+            when:
+              - item.split()[-1] != asaRestImage
+            vars:
+              ansible_command_timeout: 180
+            with_items:
+              - "{{ asaRestInventory }}"
+            tags: restClean
+        when:
+          - _restConfig is success
+          - asaRestClean == true
+      ####################################################
+      - name: Save [SYSTEM] Context Configuration
+        include_tasks: helpers/save_configuration.yml
+        when: asaMulticontext == "true"
+        tags: always
+
+    when: asaRestExists == true
+  ####################################################
+
+  - name: Exit System Context
+    include_tasks: helpers/exit_system_context.yml
+    tags: always
+
+  - name: Restore SSH to default
+    include_tasks: helpers/set_ssh_timeout_to_default.yml
+    tags: always
+
+  - name: Save Configuration
+    include_tasks: helpers/save_configuration.yml
     tags: always

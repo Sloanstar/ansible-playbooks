@@ -1,0 +1,8 @@
+---
+- name: Save Configuration
+  asa_command:
+    commands:
+      - copy /noconfirm running-config startup-config
+  vars:
+    ansible_command_timeout: 180
+  tags: always
