@@ -30,8 +30,14 @@
   set_fact:
     asaFileVerified: true
   when: >
-    ("'signature verified' in _asaFileVerify.stdout[0]|lower") or
-    ("'signature successfully validated' in _asaFileVerify.stdout[0]|lower")
+    _asaFileVerify.stdout[0] | lower is search("signature verified") or
+    _asaFileVerify.stdout[0] | lower is search("signature successfully validated")
+  tags: always
+
+- name: DEBUG - Signature Verified
+  debug:
+    msg: "{{ _asaFileVerify.stdout[0] | lower }}"
+    verbosity: 3
   tags: always
 
 # Basic Validation Univailable - Check for and compare embedded checksums.
@@ -41,7 +47,7 @@
       set_fact:
         fckEmbedded: "{{ item.split(':')[1]|trim }}"
       when:
-        - "item|trim|lower is search('embedded')"
+        - item|trim|lower is search("embedded")
       with_items:
         - "{{ _asaFileVerify.stdout_lines[0] }}"
       tags: always
@@ -50,41 +56,80 @@
       set_fact:
         fckComputed: "{{ item.split(':')[1]|trim }}"
       register: _setChecksum
-      when: "item|trim|lower is search('computed')"
+      when: item|trim|lower is search("computed")
       with_items:
         - "{{ _asaFileVerify.stdout_lines[0] }}"
-      failed_when: >
-        (fckEmbedded == "") or
-        (fckComputed == "") or
-        (fckEmbedded != fckComputed)
       tags: always
 
-   - name: Debug _asaFileVerify.stdout_lines[0]
-      debug:
-        msg: "line: {{ item }}"
-        verbosity: 3
-      with_items:
-        - "{{ _asaFileVerify.stdout_lines[0] }}"
+    - name: Unable to find all checksums
+      set_fact:
+        fileChecks: false
+      when: >
+        (fckEmbedded is not defined) or
+        (fckEmbedded|length == 0) or
+        (fckComputed is not defined) or
+        (fckComputed|length == 0)
       tags: always
+
+    - name: Checksums found for comparison
+      set_fact:
+        fileChecks: true
+      when:
+        - fckEmbedded is defined
+        - fckEmbedded|length > 0
+        - fckComputed is defined
+        - fckComputed|length >0
+      tags: always
+
+    - name: Checksum Block
+      block:
+        - name: Debug _asaFileVerify.stdout_lines[0]
+          debug:
+            msg: "line: {{ item }}"
+            verbosity: 3
+          with_items:
+            - "{{ _asaFileVerify.stdout_lines[0] }}"
+          tags: always
  
-    - name: Log Passed Checksum
-      debug:
-        msg: "\nFile checksum OK!\n{{ fckComputed }}\n"
-      when: fckEmbedded == fckComputed
-      tags: always
+        - name: Log Passed Checksum
+          debug:
+            msg: "\nFile checksum OK!\n{{ fckComputed }}\n"
+          when: fckEmbedded == fckComputed
+          tags: always
   
-    - name: Log Failed Checksum
-      debug:
-        msg: "\nfckEmbedded: {{ fckEmbedded }}\nfckComputed: {{ fckComputed }}\n"
-      when: fckEmbedded != Computed
-      tags: always
+        - name: Log Failed Checksum
+          debug:
+            msg: "\nfckEmbedded: {{ fckEmbedded }}\nfckComputed: {{ fckComputed }}\n"
+          when: fckEmbedded != Computed
+          tags: always
       
-    - name: Set File Verified TRUE if Checksums Equal
+        - name: Set File Verified TRUE if Checksums Equal
+          set_fact:
+            asaFileVerified: true
+          when: fckEmbedded == fckComputed
+          tags: always
+      when:
+        - fileChecks == true
+
+    # Sometimes there is no output on a file verify...
+    # If this happens, lets go ahead and assume everything is ok.a
+    # Thanks Cisco  <3
+
+    - name: Fix for verification without embedded checksum.
       set_fact:
         asaFileVerified: true
-      when: fckEmbedded == fckComputed
+      when:
+        - fileChecks == false
+        - _asaFileVerify.stdout_lines|length == 1
+        - _asaFileVerify.stdout_lines[0]|lower is search("verifying file integrity")
       tags: always
-  
+
+    - name: Debug Conditions
+      debug:
+        msg: "\nfileChecks: {{ fileChecks }}\nLength: {{_asaFileVerify.stdout_lines|length}}\n {{_asaFileVerify.stdout_lines[0]|lower}}"
+        verbosity: 3
+      tags: always
+
   when:
     - asaFileVerified == false
 
