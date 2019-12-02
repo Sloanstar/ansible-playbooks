@@ -34,10 +34,19 @@
     _asaFileVerify.stdout[0] | lower is search("signature successfully validated")
   tags: always
 
+- name: Check for Signature ERROR
+  set_fact:
+    asaFileVerified: false
+  when:
+    - _asaFileVerify.stdout[0] | lower is search("error")
+  tags: always
+
 - name: DEBUG - Signature Verified
   debug:
     msg: "{{ _asaFileVerify.stdout[0] | lower }}"
-    verbosity: 3
+    # verbosity: 3
+  when:
+    - asaFileVerified == false
   tags: always
 
 # Basic Validation Univailable - Check for and compare embedded checksums.
