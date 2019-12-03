@@ -14,7 +14,18 @@
   # If the ASA copy operation takes longer than 60 mins, the socket will be forcibly closed by the remote (ASA) side.
   # For this reason smaller binaries are transferred first.
   # The copy operation seems to continue even after the SSH socket is terminated (at least when using tftp).
-  # As a workaround you can run the playbook with -t osVerify, sshTimeout to do a verification on the operating system later and reset your SSH timeout
+  # As a workaround you can run the playbook with -t always to reset your SSH timeout.
+
+  # TAGS:
+  # asdmDeploy -  Will run through operations to copy ASDM binary to all hosts.
+  #               Requires asaAsdmImage to be set to the filename you wish to copy.
+  # osDeploy -    Will run through operations to copy Operating System binary to all hosts.
+  #               Requires asaOsImage to be set to the filename you wish to copy.
+  # restDeploy -  Will run through operations to copy REST API binary to all hosts.
+  #               Requires asaRestImage to be set to the filename you wish to copy.
+  # always -      These tags control basic functions or are contained within helper functions.
+  #               Helper functions are called from the main playbook with the apprpriate tag.
+  
 
   vars:
           playbook_debug_level: 0
