@@ -1,6 +1,6 @@
 ---
 - name: ASA OS Deployment / Configuration
-  hosts: ASA_PRIMARY
+  hosts: ASA
   gather_facts: no
   connection: network_cli
 
