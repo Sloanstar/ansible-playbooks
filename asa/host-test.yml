@@ -1,0 +1,28 @@
+---
+- name: ASA OS Deployment / Configuration
+  hosts: ASA
+  gather_facts: no
+  connection: network_cli
+
+  #Author:              Jason A. Sloan
+  #Tested OS:           ASA 9.6.4+
+  #Tested Models:       5516,5545,5585
+  #Tested Modes:        Single Context, Multi Context
+
+  vars:
+          playbook_debug_level: 0
+
+  tasks:
+  - name: Show Login Banner
+    asa_command:
+      commands:
+        - show banner login
+    register: _asaShowBanner
+    vars:
+      ansible_command_timeout: 180
+    tags: always
+
+  - name: DEBUG - Show Login Banner
+    debug:
+      var: _asaShowBanner
+    tags: always
