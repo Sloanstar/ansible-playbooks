@@ -23,6 +23,7 @@ for line in input_file:
 
 # Pull VARS from INI file.
 asaVars = configparser.ConfigParser()
+asaVars.optionxform=str
 asaVars.read("asa_vars.ini")
 
 for firewall in firewalls:
