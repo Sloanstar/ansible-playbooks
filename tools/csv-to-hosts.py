@@ -28,9 +28,11 @@ for line in input_file:
 
 for firewall in firewalls:
     fwModel = firewall["Machine Type"].replace(" ","_")
+    fwModel = fwModel.replace("-","_")
 
     if len(firewalls) > index+1:
         fwNextModel = firewalls[index+1]["Machine Type"].replace(" ","_")
+        fwNextModel = fwNextModel.replace("-","_")
         if fwModel != fwNextModel:
             fwNewModel = True
         else:
