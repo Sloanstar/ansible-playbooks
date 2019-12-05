@@ -1,1 +1,3 @@
 hosts
+tools/Report_All_Firewalls_Report.csv
+tools/asa_vars.ini

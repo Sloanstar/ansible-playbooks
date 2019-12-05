@@ -5,6 +5,7 @@
 # Output Host File
 
 import csv
+import configparser
 
 input_file = csv.DictReader(open("Report_All_Firewalls_Report.csv"))
 firewalls = []
@@ -17,14 +18,12 @@ lastModel = None
 fwNewModel = False
 index=0
 
-#SET ASA:vars for host file
-asaFileHost = "127.0.0.1"
-asaFileTransport = "tftp"
-asaSshTimeout = 5
-#End ASA:vars
-
 for line in input_file:
     firewalls.append(line)
+
+# Pull VARS from INI file.
+asaVars = configparser.ConfigParser()
+asaVars.read("asa_vars.ini")
 
 for firewall in firewalls:
     fwModel = firewall["Machine Type"].replace(" ","_")
@@ -61,16 +60,34 @@ for firewall in firewalls:
             for fw in primary:
                 print(f"{fw}")
             print("\n")
+            #dump primary vars from INI
+            if asaVars.has_section(fwModel):
+                print(f"[{fwModel}_PRIMARY:vars]")
+                for key,value in asaVars.items(fwModel):
+                    print(f"{key}={value}")
+                print(f"\n")
             #dump secondary
             print(f"[{fwModel}_SECONDARY]")
             for fw in secondary:
                 print(f"{fw}")
             print("\n")
+            #dump secondary vars from INI
+            if asaVars.has_section(fwModel):
+                print(f"[{fwModel}_SECONDARY:vars]")
+                for key,value in asaVars.items(fwModel):
+                    print(f"{key}={value}")
+                print(f"\n")
         elif fwModel and len(primary) > 0:
             allPrimary.append(fwModel)
             for fw in primary:
                 print(f"{fw}")
             print("\n")
+            #dump vars from INI for model type, if no pri/sec
+            if asaVars.has_section(fwModel):
+                print(f"[{fwModel}:vars]")
+                for key,value in asaVars.items(fwModel):
+                    print(f"{key}={value}")
+                print(f"\n")
         primary = []
         secondary = []
     index += 1
@@ -96,17 +113,19 @@ for model in allModels:
     print(f"{model}")
 print("\n")
 
-# TODO VARS as variables at top, printed here.
-# TODO Model Specific variables.
-
 print(f"[ASA:vars]")
-print(f"ansible_network_os=asa")
-print(f"ansible_become=yes")
-print(f"ansible_become_method=enable")
-print(f"asaFileTransport={asaFileTransport}")
-print(f"asaFileHost={asaFileHost}")
-print(f"asaMulticontext=false")
-print(f"asaAsdmImage=asdm-7131.bin")
-print(f"asaRestImage=asa-restapi-7131-lfbff-k8.SPA")
-print(f"asaSshTimeout={asaSshTimeout}")
+for key,value in asaVars.items('ASA'):
+    print(f"{key}={value}")
+print(f"\n")
 
+#Warn for unused sections/models basted on host generation.
+for section in asaVars:
+    if section == "DEFAULT":
+        continue
+    if section != "ASA":
+        if section not in allModels:
+            print(f"# WARNING!!! - Variable Section with no matching model!\n# WARNING!!! - These variables will not be used!")
+            print(f"[{section}:vars]")
+            for key,value in asaVars.items(section):
+                print(f"{key}={value}")
+            print(f"\n")
