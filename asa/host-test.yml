@@ -1,6 +1,10 @@
 ---
 - name: ASA OS Deployment / Configuration
+<<<<<<< HEAD
   hosts: ASA
+=======
+  hosts: ASA_PRIMARY
+>>>>>>> cdaf9977daea338b924428a669687e30472f0d24
   gather_facts: no
   connection: network_cli
 
@@ -25,4 +29,8 @@
   - name: DEBUG - Show Login Banner
     debug:
       var: _asaShowBanner
+<<<<<<< HEAD
     tags: always
+=======
+    tags: always
+>>>>>>> cdaf9977daea338b924428a669687e30472f0d24
