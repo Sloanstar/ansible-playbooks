@@ -1,6 +1,6 @@
 ---
 - name: ASA REST API Deployment / Configuration
-  hosts: ASA_PRIMARY
+  hosts: ASA_REST
   gather_facts: no
   connection: network_cli
 
@@ -26,9 +26,10 @@
 
   vars:
           playbook_debug_level: 0
-          asaRestVerified: false | bool
+          asaRestVerified: false
           asaRestCopy: "{{ RestCopy | default(false) | bool }}"
           asaRestClean: "{{ RestClean | default(false) | bool }}"
+          asaRestExists: false
 
 
   tasks:
@@ -85,14 +86,12 @@
 
 ############### IMAGE EXISTS ###############
   - name: Check REST Image Exists
-    include_tasks: helpers/file_verify.yml
+    include_tasks: helpers/file_exists.yml
     tags: restFact
 
   - name: Set asaRestExists value to asaFileExists value
     set_fact:
       asaRestExists: "{{asaFileExists}}"
-    when:
-      - asaFileExists is defined
     tags: restFact
 
   - name: DEBUG - asaRestExists Value
@@ -110,10 +109,6 @@
       - asaRestCopy == true
     tags: restCopy
   
-  - name: Set EXISTS to true if successful
-    set_fact:
-      asaRestExists: true
-    when: _asaFileCopy is success
 ###################################################
 
 ################# VERIFY IMAGE ####################
@@ -126,9 +121,27 @@
       - name: Set Verified to asaFileVerified value
         set_fact:
           asaRestVerified: "{{asaFileVerified}}"
-        tags: rstFact
-    when: asaRestExists == true
+        tags: restFact
+
+    when:
+      - asaRestExists == true
+      - asaRestVerified == false
 ###################################################
+
+  - name: DEBUG - asaRestVerified
+    debug:
+      var: asaRestVerified
+      verbosity: 3
+
+  - name: DEBUG - asaRestVerified
+    debug:
+      var: asaCurrentRest
+      verbosity: 3
+
+  - name: DEBUG - asaRestVerified
+    debug:
+      var: asaRestImage
+      verbosity: 3
     
 ########## REST Configuration Block ###############
   - name: REST Configuration Block
@@ -142,7 +155,6 @@
             - rest-api agent
         register: _restConfig
         when:
-          - asaRestVerified == true
           - asaCurrentRest != asaRestImage
         vars:
           ansible_command_timeout: 180
@@ -198,7 +210,7 @@
         when: asaMulticontext == "true"
         tags: always
 
-    when: asaRestExists == true
+    when: asaRestVerified == true
   ####################################################
 
   - name: Exit System Context

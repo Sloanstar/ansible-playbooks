@@ -1,0 +1,92 @@
+---
+- name: ASA SNMP Configuration Standards
+  hosts: CUSTOM
+  gather_facts: no
+  connection: network_cli
+
+  #Author:              Jason A. Sloan
+  #Tested OS:           ASA 9.6.4+
+  #Tested Models:       5516,5545,5585
+  #Tested Modes:        Single Context, Multi Context
+
+  # Known Issue:
+  # Due to ASA SSH timeout configuration limitations I am unable to stay connected to the ASA for a period of longer than 60 mins.
+  # If the ASA copy operation takes longer than 60 mins, the socket will be forcibly closed by the remote (ASA) side.
+  # The copy operation seems to continue even after the SSH socket is terminated (at least when using tftp).
+  # As a workaround you can run the playbook with -t osVerify, sshTimeout to do a verification on the operating system later and reset your SSH timeout
+
+  vars:
+          playbook_debug_level: 0
+          asaIntfName: "{{ IntfName | default('inside') }}"
+
+  tasks:
+
+  - name: Set Maximum SSH timeout
+    asa_config:
+      lines:
+        - ssh timeout 60
+    register: _sshTimeoutRemove
+    vars:
+      ansible_command_timeout: 180
+    tags: always,sshTimeout
+
+  - name: Debug SSH Timeout Removal
+    debug:
+      var: _sshTimeoutRemove
+    when: >
+      (playbook_debug_level > 0) or
+      (_sshTimeoutRemove is failed)
+    tags: always,sshTimeout
+
+  - name: Set SNMP Configuration
+    asa_config:
+      lines:
+        - snmp-server group readgroup v3 priv
+        - snmp-server user servicenowRO readgroup v3 auth {{ asaSnmpAuth }} priv aes 256 {{ asaSnmpPriv }}
+        - snmp-server host {{ asaIntfName }} 10.128.86.87 poll version 3 servicenowRO
+        - snmp-server host {{ asaIntfName }} 10.128.86.92 poll version 3 servicenowRO
+        - snmp-server host {{ asaIntfName }} 10.128.86.93 poll version 3 servicenowRO
+        - snmp-server host {{ asaIntfName }} 10.128.86.94 poll version 3 servicenowRO
+        - snmp-server host {{ asaIntfName }} 10.128.86.95 poll version 3 servicenowRO
+        - snmp-server host {{ asaIntfName }} 10.128.86.96 poll version 3 servicenowRO
+        - snmp-server host {{ asaIntfName }} 10.128.86.97 poll version 3 servicenowRO
+        - snmp-server host {{ asaIntfName }} 10.128.86.98 poll version 3 servicenowRO
+        - snmp-server host {{ asaIntfName }} 10.128.60.229 poll version 3 servicenowRO
+
+    register: _setSnmpConfig
+    vars:
+      ansible_command_timeout: 180
+    tags: snmpConfig
+
+  - name: Debug Failed SNMP Config
+    debug:
+      var: _setSnmpConfig
+    when: >
+      (playbook_debug_level > 3) or
+      (_setSnmpConfig is failed)
+    tags: snmpConfig
+    
+  - name: Set SSH Timeout Back to Desired Value ({{ asaSshTimeout }})
+    asa_config:
+      lines:
+        - ssh timeout {{ asaSshTimeout }}
+    register: _sshTimeoutAdd
+    vars:
+      ansible_command_timeout: 180
+    tags: always,sshTimeout
+
+  - name: Debug setting SSH timeout to {{ asaSshTimeout }} min when failed
+    debug:
+      var: _sshTimeoutAdd
+    when: >
+      (playbook_debug_level > 0) or
+      (_sshTimeoutAdd is failed)
+    tags: alsways,sshTimeout
+
+  - name: Save Configuration
+    asa_command:
+      commands:
+        - copy /noconfirm running-config startup-config
+    vars:
+      ansible_command_timeout: 180
+    tags: always
